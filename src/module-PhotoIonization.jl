@@ -302,59 +302,23 @@ end
         A neat table is printed for each line but nothing is returned otherwise.
 """
 function computeDisplayNonE1AngleDifferentialCS(stream::IO, lines::Array{PhotoIonization.Line,1}, settings::PhotoIonization.Settings)
-    function spinDensityMatrix(lambda1::Int64, lambda2::Int64, Stokes::ExpStokes)
+    function spinDensityMatrix(lambda1::Int64, lambda2::Int64, stokes::ExpStokes)
         # Convert the Stokes parameters of the incoming light into a spin-density matrix on the indices lambda = +-1
-        # For linearly polarised light sqrt{S_1^2 + S_2^2 + S_3^2} = 1
-        # We take gamma = 0
-
-        #RCPL
-        # p = 1.
-        # alpha = pi/4
-        # gamma = 0.
-
-        #LCPL
-        # p = 1.
-        # alpha = -pi/4.
-        # gamma = 0.
-
-        #LPL
-        # p = 1.
-        # alpha = 0.
-        # gamma = 0.
-
-        #UPL
-        # p = 0.
-        # alpha = -pi/4.
-        # gamma = 0.
-
-        # S1 = - p * cos( 2 * alpha ) * cos( 2 * gamma )
-        # S2 = - p * cos( 2 * alpha ) * sin( 2 * gamma )
-        # S3 =   p * sin( 2 * alpha )
-
-        # S1 = - cos( 2 * phi )
-        # S2 = - sin( 2 * phi )
-        # S3 =   0
-
-        # Linear
-        S1 = -1.
-        S2 = 0.
-        S3 = 0.
-
-        # RCPL
-        # S1 = 0.
-        # S2 = 0.
-        # S3 = 1.
-
-        if      lambda1 == lambda2  == 1               return( (1.0 + Stokes.P3)/2. )
-        elseif  lambda1 ==  1   &&   lambda2  == -1    return( (Stokes.P1 - Stokes.P2*im)/2. )
-        elseif  lambda1 == -1   &&   lambda2  ==  1    return( (Stokes.P1 + Stokes.P2*im)/2. )
-        elseif  lambda1 == lambda2  == -1              return( (1.0 - Stokes.P3)/2. )
+        if      lambda1 == lambda2  == 1               return( (1.0 + stokes.P3)/2. )
+        elseif  lambda1 ==  1   &&   lambda2  == -1    return( (stokes.P1 - stokes.P2*im)/2. )
+        elseif  lambda1 == -1   &&   lambda2  ==  1    return( (stokes.P1 + stokes.P2*im)/2. )
+        elseif  lambda1 == lambda2  == -1              return( (1.0 - stokes.P3)/2. )
         else    error("stop a")
         end
     end
 
-    f = open("Beta-test.dat", "w")
-    g = open("DCS-test.dat", "w")
+    g = open("DCS.dat", "w")
+
+    println( g, TableStrings.hLine(94) )
+    println( g, "i-level-f                theta            phi    Coulomb DCS      Babushkin DCS         Energy" )
+    println( g, "                                                 [MBarn/rad]       [MBarn/rad]           [eV]" )
+    println( g, TableStrings.hLine(94) )
+    println( g )
 
     # Beta, Gamma1, Gamma3, Lambda1, Lambda3, Delta1
     angularParams = Dict{Float64, Vector{Basics.EmProperty}}()
@@ -362,19 +326,10 @@ function computeDisplayNonE1AngleDifferentialCS(stream::IO, lines::Array{PhotoIo
     nx = 50
     # Define the 2x2 spins
     # Loop about all lines; a table is printed independently for each line
-    lineCount = 0;
     for  line in lines
-        lineCount += 1
-        @printf( "Working on energy, E = %0.5F H; ", line.photonEnergy )
-        println( "$(line.initialLevel.J) -- $(line.finalLevel.J)" )
-        # readline()
-
         angCS = Tuple{AngularJ64, Float64, Float64, ComplexF64, ComplexF64}[]  # finalLevel.J, theta, phi, angCs.Coulomb, angCs.Babushkin
         sigmaBarC = 0.
         sigmaBarB = 0.
-
-        println( "Line $(lineCount)" )
-        chCount = 0;
 
         for  cha in line.channels
             # println( "Amplitude ", abs( cha.amplitude ) ^ 2, "gauge ", cha.gauge, "kappa ", cha.kappa )
@@ -387,10 +342,6 @@ function computeDisplayNonE1AngleDifferentialCS(stream::IO, lines::Array{PhotoIo
                 sigmaBarB += abs( cha.amplitude ) ^ 2
             end
         end
-
-        # @printf( "sigmaBar (Coulomb)   = %25.10e\n", sigmaBarC )
-        # @printf( "sigmaBar (Babushkin) = %25.10e\n", sigmaBarB )
-        # println( "==========")
 
         angCsCoeff =  2. * pi^3 * 137.03599 / ( line.photonEnergy * ( Basics.twice(line.initialLevel.J) + 1 ) )
 
@@ -460,17 +411,6 @@ function computeDisplayNonE1AngleDifferentialCS(stream::IO, lines::Array{PhotoIo
                                 csCoulomb += ( betaPart / sigmaBarC )
 
                                 if lambda1 * lambda2 == 1 && theta == phi == 0.
-                                    if ( cha.gauge == Basics.Magnetic || chb.gauge == Basics.Magnetic && cha.gauge != chb.gauge )
-                                        # chCount += 1
-                                        # println("$(chCount) =>    $(cha.kappa)  --  $(chb.kappa)    $(j1)    $(j2)    $(cha.multipole.L)    $(chb.multipole.L)    $(X)    $(cha.multipole.electric)    $(chb.multipole.electric)")
-                                        # println( key1 )
-                                        # println("K = ", K)
-                                        # println("W = ", W)
-                                        # println("KW = ", K * W )
-                                        # println("DD*  = ", cha.amplitude * conj( chb.amplitude ) )
-                                        # println("KWDD*  = ", betaPart )
-                                        # println("==============")
-                                    end
                                     angCsParams[ key1 ][ 1 ] += ( betaPart / sigmaBarC )
                                 end
 
@@ -487,7 +427,7 @@ function computeDisplayNonE1AngleDifferentialCS(stream::IO, lines::Array{PhotoIo
             end
 
             if theta == phi == 0.0
-                angularParams[line.photonEnergy * 27.2114079527] = [
+                angularParams[line.photonEnergy] = [
                     EmProperty(0.),   # Beta_1
                     EmProperty(0.),   # Gamma1
                     EmProperty(0.),   # Gamma3
@@ -495,73 +435,50 @@ function computeDisplayNonE1AngleDifferentialCS(stream::IO, lines::Array{PhotoIo
                     EmProperty(0.),   # Pi4
                     EmProperty(0.),   # Delta1
                     EmProperty(0.),   # Lambda2
-                    EmProperty(0.),    # Lambda4
+                    EmProperty(0.),   # Lambda4
                     EmProperty(0.)    # Upsilon
                 ]
                 for (key, value) in angCsParams
-                    print( f, "$(key[1])        $(key[2])        $(key[3])        $(key[4] ? 1 : 0)        $(key[5] ? 1 : 0)        " )
-                    @printf( f, "%15.5e        %15.5e\n", value[1].re, value[2].re )
-
                     if key[1] == 1 && key[2] == 1 && key[3] == 2 && key[4] && key[5]
-                        angularParams[line.photonEnergy * 27.2114079527][1] = EmProperty( value[1].re * -2., value[2].re * -2. )
+                        angularParams[line.photonEnergy][1] = EmProperty( value[1].re * -2., value[2].re * -2. )
 
                     elseif key[1] == 1 && key[2] == 2 && key[3] == 1 && key[4] && key[5]
-                        angularParams[line.photonEnergy * 27.2114079527][2] = EmProperty( value[1].re, value[2].re )
+                        angularParams[line.photonEnergy][2] = EmProperty( value[1].re, value[2].re )
 
                     elseif key[1] == 1 && key[2] == 2 && key[3] == 3 && key[4] && key[5]
-                        angularParams[line.photonEnergy * 27.2114079527][3] = EmProperty( value[1].re, value[2].re )
+                        angularParams[line.photonEnergy][3] = EmProperty( value[1].re, value[2].re )
 
                     elseif key[1] == 2 && key[2] == 2 && key[3] == 2 && key[4] && key[5]
-                        angularParams[line.photonEnergy * 27.2114079527][4] = EmProperty( value[1].re, value[2].re )
+                        angularParams[line.photonEnergy][4] = EmProperty( value[1].re, value[2].re )
 
                     elseif key[1] == 2 && key[2] == 2 && key[3] == 4 && key[4] && key[5]
-                        angularParams[line.photonEnergy * 27.2114079527][5] = EmProperty( value[1].re, value[2].re )
+                        angularParams[line.photonEnergy][5] = EmProperty( value[1].re, value[2].re )
 
                     elseif key[1] == 1 && key[2] == 1 && key[3] == 1 && key[4] && !key[5]
-                        angularParams[line.photonEnergy * 27.2114079527][6] = EmProperty( value[1].re, value[2].re )
+                        angularParams[line.photonEnergy][6] = EmProperty( value[1].re, value[2].re )
 
                     elseif key[1] == 1 && key[2] == 3 && key[3] == 2 && key[4] && key[5]
-                        angularParams[line.photonEnergy * 27.2114079527][7] = EmProperty( value[1].re, value[2].re )
+                        angularParams[line.photonEnergy][7] = EmProperty( value[1].re, value[2].re )
 
                     elseif key[1] == 1 && key[2] == 3 && key[3] == 4 && key[4] && key[5]
-                        angularParams[line.photonEnergy * 27.2114079527][8] = EmProperty( value[1].re, value[2].re )
+                        angularParams[line.photonEnergy][8] = EmProperty( value[1].re, value[2].re )
 
                     elseif key[1] == 1 && key[2] == 2 && key[3] == 2 && key[4] && !key[5]
-                        angularParams[line.photonEnergy * 27.2114079527][9] = EmProperty( value[1].re, value[2].re )
+                        angularParams[line.photonEnergy][9] = EmProperty( value[1].re, value[2].re )
 
                     end
                 end
             end
 
-            # push!(angCS, (line.finalLevel.J, theta, phi, csCoulomb * angCsCoeff, csBabushkin * angCsCoeff))
-            print( g, "$(line.initialLevel.J) --  $(line.finalLevel.J)        " )
-            @printf( g, "%0.5f\t\t",  theta )
-            @printf( g, "%0.5f\t\t",  phi )
-            @printf( g, "%15.5e\t\t", csCoulomb.re * angCsCoeff )
-            @printf( g, "%15.5e\t\t", csBabushkin.re * angCsCoeff )
-            @printf( g, "%15.8e\n",   line.photonEnergy * 27.2114079527 )
+            print( g, TableStrings.flushleft( 15, "$(line.initialLevel.J) -- $(line.finalLevel.J)" ) )
+            @printf( g, "%15.5f",   theta )
+            @printf( g, "%15.5f",   phi )
+            @printf( g, "%15.5e    ",   csCoulomb.re * angCsCoeff )
+            @printf( g, "%15.5e",   csBabushkin.re * angCsCoeff )
+            @printf( g, "%15.8e\n", line.photonEnergy * 27.2114079527 )
         end
-        # println()
 
         println( g, "\n" )
-
-        # angCS_axis = [[],[],[],[],[],[]]
-
-        # for elm in angCS
-        #     X_axis_C = elm[4] * sin( elm[2] ) * cos( elm[3] )
-        #     X_axis_B = elm[5] * sin( elm[2] ) * cos( elm[3] )
-        #     Y_axis_C = elm[4] * sin( elm[2] ) * sin( elm[3] )
-        #     Y_axis_B = elm[5] * sin( elm[2] ) * sin( elm[3] )
-        #     Z_axis_C = elm[4] * cos( elm[2] )
-        #     Z_axis_B = elm[5] * cos( elm[2] )
-        #     push!( angCS_axis[1], X_axis_C.re)
-        #     push!( angCS_axis[2], Y_axis_C.re)
-        #     push!( angCS_axis[3], Z_axis_C.re)
-        #     push!( angCS_axis[4], X_axis_B.re)
-        #     push!( angCS_axis[5], Y_axis_B.re)
-        #     push!( angCS_axis[6], Z_axis_B.re)
-        # end
-        # Plot3DGraphDifferentialCrossSection( line, angCS_axis )
     end
 
     ## We're printing only Beta, Gamma1, Gamma3, Pi2 , Pi4
@@ -586,21 +503,20 @@ function computeDisplayNonE1AngleDifferentialCS(stream::IO, lines::Array{PhotoIo
         #
         for  line in lines
             sa  = "";    isym = LevelSymmetry( line.initialLevel.J, line.initialLevel.parity)
-                            fsym = LevelSymmetry( line.finalLevel.J,   line.finalLevel.parity)
+                         fsym = LevelSymmetry( line.finalLevel.J,   line.finalLevel.parity)
             sa = sa * TableStrings.center(18, TableStrings.levels_if(line.initialLevel.index, line.finalLevel.index); na=2)
             sa = sa * TableStrings.center(18, TableStrings.symmetries_if(isym, fsym); na=3)
             en = line.finalLevel.energy - line.initialLevel.energy
             sa = sa * @sprintf("%.6e", Defaults.convertUnits("energy: from atomic", en))                  * "    "
             sa = sa * @sprintf("%.6e", Defaults.convertUnits("energy: from atomic", line.photonEnergy))   * "    "
             sa = sa * @sprintf("%.6e", Defaults.convertUnits("energy: from atomic", line.electronEnergy)) * "   "
-            sa = sa * @sprintf("% .6e", angularParams[line.photonEnergy * 27.2114079527][p].Coulomb)     * "   "
-            sa = sa * @sprintf("% .6e", angularParams[line.photonEnergy * 27.2114079527][p].Babushkin)   * "   "
+            sa = sa * @sprintf("% .6e", angularParams[line.photonEnergy][p].Coulomb)     * "   "
+            sa = sa * @sprintf("% .6e", angularParams[line.photonEnergy][p].Babushkin)   * "   "
             println(stream, sa)
         end
         println(stream, "  ", TableStrings.hLine(nx))
     end
 
-    close(f)
     close(g)
 
     return( nothing )
