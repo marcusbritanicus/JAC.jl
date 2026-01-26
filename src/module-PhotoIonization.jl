@@ -5,7 +5,7 @@
     and final-state multiplets.
 """
 module PhotoIonization
-
+using Plots
 
 using Printf, ..AngularMomentum, ..Basics, ..Continuum, ..Defaults, ..Radial, ..Nuclear, ..ManyElectron, ..PhotoEmission,
               ..TableStrings
@@ -18,6 +18,7 @@ using Printf, ..AngularMomentum, ..Basics, ..Continuum, ..Defaults, ..Radial, ..
     + photonEnergies                ::Array{Float64,1}    ... List of photon energies [in user-selected units].
     + electronEnergies              ::Array{Float64,1}    ... List of electron energies; usually only one of these lists are utilized.
     + thetas                        ::Array{Float64,1}    ... List of theta-values if angle-differential CS are calculated explicitly.
+    + phis                          ::Array{Float64,1}    ... List of phi]-values if angle-differential CS are calculated explicitly.
     + calcAnisotropy                ::Bool                ... True, if the beta anisotropy parameters are to be calculated and false otherwise (o/w).
     + calcPartialCs                 ::Bool                ... True, if partial cross sections are to be calculated and false otherwise.
     + calcTimeDelay                 ::Bool                ... True, if time-delays are to be calculated and false otherwise.
@@ -35,6 +36,7 @@ struct Settings  <:  AbstractProcessSettings
     photonEnergies                  ::Array{Float64,1}
     electronEnergies                ::Array{Float64,1}
     thetas                          ::Array{Float64,1}
+    phis                            ::Array{Float64,1}
     calcAnisotropy                  ::Bool
     calcPartialCs                   ::Bool
     calcTimeDelay                   ::Bool
@@ -52,7 +54,7 @@ end
 `PhotoIonization.Settings()`  ... constructor for the default values of photoionization line computations
 """
 function Settings()
-    Settings(Basics.EmMultipole[E1], Basics.UseGauge[Basics.UseCoulomb, Basics.UseBabushkin], Float64[], Float64[], Float64[],
+    Settings(Basics.EmMultipole[E1], Basics.UseGauge[Basics.UseCoulomb, Basics.UseBabushkin], Float64[], Float64[], Float64[], Float64[],
                 false, false, false, false, false, false, LineSelection(), Basics.ExpStokes(), 0., [0,1,2,3,4,5])
 end
 
@@ -70,18 +72,20 @@ end
 function Settings(set::PhotoIonization.Settings;
     multipoles::Union{Nothing,Array{EmMultipole,1}}=nothing,                gauges::Union{Nothing,Array{UseGauge,1}}=nothing,
     photonEnergies::Union{Nothing,Array{Float64,1}}=nothing,                electronEnergies::Union{Nothing,Array{Float64,1}}=nothing,
-    thetas::Union{Nothing,Array{Float64,1}}=nothing,                        calcAnisotropy::Union{Nothing,Bool}=nothing,
-    calcPartialCs::Union{Nothing,Bool}=nothing,                             calcTimeDelay::Union{Nothing,Bool}=nothing,
-    calcNonE1AngleDifferentialCS::Union{Nothing,Bool}=nothing,              calcTensors::Union{Nothing,Bool}=nothing,
-    printBefore::Union{Nothing,Bool}=nothing,                               lineSelection::Union{Nothing,LineSelection}=nothing,
-    stokes::Union{Nothing,ExpStokes}=nothing,                               freeElectronShift::Union{Nothing,Float64}=nothing,
-    lValues::Union{Nothing,Array{Int64,1}}=nothing)
+    thetas::Union{Nothing,Array{Float64,1}}=nothing,                        phis::Union{Nothing,Array{Float64,1}}=nothing,
+    calcAnisotropy::Union{Nothing,Bool}=nothing,                            calcPartialCs::Union{Nothing,Bool}=nothing,
+    calcTimeDelay::Union{Nothing,Bool}=nothing,                             calcNonE1AngleDifferentialCS::Union{Nothing,Bool}=nothing,
+    calcTensors::Union{Nothing,Bool}=nothing,                               printBefore::Union{Nothing,Bool}=nothing,
+    lineSelection::Union{Nothing,LineSelection}=nothing,                    stokes::Union{Nothing,ExpStokes}=nothing,
+    freeElectronShift::Union{Nothing,Float64}=nothing,                      lValues::Union{Nothing,Array{Int64,1}}=nothing)
+
 
     if  multipoles        == nothing   multipolesx        = set.multipoles        else  multipolesx        = multipoles         end
     if  gauges            == nothing   gaugesx            = set.gauges            else  gaugesx            = gauges             end
     if  photonEnergies    == nothing   photonEnergiesx    = set.photonEnergies    else  photonEnergiesx    = photonEnergies     end
     if  electronEnergies  == nothing   electronEnergiesx  = set.electronEnergies  else  electronEnergiesx  = electronEnergies   end
     if  thetas            == nothing   thetasx            = set.thetas            else  thetasx            = thetas             end
+    if  phis              == nothing   phisx              = set.phis              else  phisx              = phis               end
     if  calcAnisotropy    == nothing   calcAnisotropyx    = set.calcAnisotropy    else  calcAnisotropyx    = calcAnisotropy     end
     if  calcPartialCs     == nothing   calcPartialCsx     = set.calcPartialCs     else  calcPartialCsx     = calcPartialCs      end
     if  calcTimeDelay     == nothing   calcTimeDelayx     = set.calcTimeDelay     else  calcTimeDelayx     = calcTimeDelay      end
@@ -94,7 +98,7 @@ function Settings(set::PhotoIonization.Settings;
     if  freeElectronShift == nothing   freeElectronShiftx = set.freeElectronShift else  freeElectronShiftx = freeElectronShift  end
     if  lValues           == nothing   lValuesx           = set.lValues           else  lValuesx           = lValues            end
 
-    Settings( multipolesx, gaugesx, photonEnergiesx, electronEnergiesx, thetasx, calcAnisotropyx, calcPartialCsx, calcTimeDelayx,
+    Settings( multipolesx, gaugesx, photonEnergiesx, electronEnergiesx, thetasx, phisx, calcAnisotropyx, calcPartialCsx, calcTimeDelayx,
                 calcNonE1AngleDifferentialCSx, calcTensorsx, printBeforex, lineSelectionx, stokesx, freeElectronShiftx, lValuesx)
 end
 
@@ -106,6 +110,7 @@ function Base.show(io::IO, settings::PhotoIonization.Settings)
     println(io, "photonEnergies:                $(settings.photonEnergies)  ")
     println(io, "electronEnergies:              $(settings.electronEnergies)  ")
     println(io, "thetas:                        $(settings.thetas)  ")
+    println(io, "phis:                          $(settings.phis)  ")
     println(io, "calcAnisotropy:                $(settings.calcAnisotropy)  ")
     println(io, "calcPartialCs:                 $(settings.calcPartialCs)  ")
     println(io, "calcTimeDelay:                 $(settings.calcTimeDelay)  ")
