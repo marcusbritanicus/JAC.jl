@@ -3,21 +3,19 @@
 #  Use Jupyter notebooks:      using IJulia;   notebook()
 #  Activation:                 ];   pkg> up;   pkg> activate
 #  Working with JAC:           using Revise;   using JAC;   include("../src/jac.jl");   pkg> test
-#  
+#
 #  Copy to desktop             scp -r JAC.jl/ fritzsch@10.140.119.236:~/fri/.
 """
-`module JAC`  
-    ... Jena Atomic Calculator (JAC) provides tools for performing atomic (structure) calculations at various degrees of complexity 
+`module JAC`
+    ... Jena Atomic Calculator (JAC) provides tools for performing atomic (structure) calculations at various degrees of complexity
         and sophistication. It has been designed to not only calculate atomic level structures and properties [such as g-factors or
-        hyperfine and isotope-shift parameters] but also transition amplitudes between bound-state levels [for the dipole 
-        operator, etc.] and, in particular, (atomic) transition probabilities, Auger rates, photoionization cross sections, 
+        hyperfine and isotope-shift parameters] but also transition amplitudes between bound-state levels [for the dipole
+        operator, etc.] and, in particular, (atomic) transition probabilities, Auger rates, photoionization cross sections,
         radiative and dielectronic recombination rates as well as cross sections for several other -- elementary or composed --
-        processes. 
+        processes.
 
 """
 module JAC
-
-const JAC = JAC
 
 
 # Restrict the size and functionality of code by just including certain modules, while others are not taken into account.
@@ -44,66 +42,66 @@ incRacahAlgebra         = false  ==#
 
 
 
-using  Dates,  Printf,  BSplineKit, LinearAlgebra, SpecialFunctions, QuadGK, Cubature, GSL, JLD2, SymEngine, 
+using  Dates,  Printf,  BSplineKit, LinearAlgebra, SpecialFunctions, QuadGK, Cubature, GSL, JLD2, SymEngine,
        HypergeometricFunctions  ## , Interact, GaussQuadrature, IJulia, FortranFiles
 
 export AbstractCImethod, AbstractConfigurationRestriction, AbstractEeInteraction, AbstractPotential, AbstractQedModel, AbstractStartOrbitals,
        AbstractProcessSettings, AbstractEmpiricalSettings, AbstractPlasmaModel, AbstractPropertySettings, AbstractLineShiftSettings,
        AbstractNeutralNetwork, AbstractNeutralNetworkRequest, Application,
-       add, AlphaX, AllShells, AlphaVariation, analyze, AnapoleMoment, 
-       AngularJ64, AngularM64, AngularJ, AngularMomentum, AddElectrons, 
+       add, AlphaX, AllShells, AlphaVariation, analyze, AnapoleMoment,
+       AngularJ64, AngularM64, AngularJ, AngularMomentum, AddElectrons,
        AsfSettings, Atomic, AtomicState, AtomicStructure, Auger, AugerInPlasma, AutoIonization, AverageAtom, AtomicCompass,
        AtomicModel, AtomicFeatures,
-       Basics, Basis, Beam, BeamPhotoExcitation, BreitInteraction, Bsplines, BsplinesN, ByMultipoles, ByNumber, ByParity, 
-       CartesianVector, Cartesian2DFieldVector, Cartesian3DFieldVector, CiSettings, CiExpansion, ClebschGordan, CloseCoupling, 
-       compute, convertUnits, Compton, Configuration, ConfigurationR, 
-       Cascade, Continuum, CorePolarization, Coulex, CoulombExcitation, Coulion, CoulombBreit, CoulombGaunt, 
+       Basics, Basis, Beam, BeamPhotoExcitation, BreitInteraction, Bsplines, BsplinesN, ByMultipoles, ByNumber, ByParity,
+       CartesianVector, Cartesian2DFieldVector, Cartesian3DFieldVector, CiSettings, CiExpansion, ClebschGordan, CloseCoupling,
+       compute, convertUnits, Compton, Configuration, ConfigurationR,
+       Cascade, Continuum, CorePolarization, Coulex, CoulombExcitation, Coulion, CoulombBreit, CoulombGaunt,
        CoulombInteraction, CoulombIonization, CsfR, ClosedCore, ClosedShells, ClosedSubshells, ContractShells, checkConfigurations,
-       computeCrossSections,  computeForPedestrians,  computeLevelEnergies,  computeLifetimes,  computeResonanceStrength, computeTransitionRates, 
+       computeCrossSections,  computeForPedestrians,  computeLevelEnergies,  computeLifetimes,  computeResonanceStrength, computeTransitionRates,
        diagonalize, Defaults, DecayYield, DielectronicRecombination, Dierec, Djpq, DoubleAutoIonization, DoubleAuger, DeepLearning,
        DiagonalCoulomb, DefaultQuantizationAxis, displayCouplings, displayConfiguration,  displayConfigurations, Distribution,
-       Eimex, ElectronCapture, ElecCapture, estimate, ElectricDipoleMoment, Einstein, EinsteinX, EmMultipole, evaluate, ExpStokes, 
-       Empirical, ExciteElectrons, ExcitationLevel, ExpandShells, estimateCrossSections, extractConfiguration,  extractConfigurations,  
+       Eimex, ElectronCapture, ElecCapture, estimate, ElectricDipoleMoment, Einstein, EinsteinX, EmMultipole, evaluate, ExpStokes,
+       Empirical, ExciteElectrons, ExcitationLevel, ExpandShells, estimateCrossSections, extractConfiguration,  extractConfigurations,
        extractFromConfiguration, extractFromConfigurations, EmProperty, EmPropertyC,
        E1, M1, E2, M2, E3, M3, E4, M4,
        FormFactor, FormF, FullCIeigen, ForPedestrians, ForGivenConfigs,
-       ForAutoIonization, ForDielectronicCapture, ForDielectronicRecombination, ForElectronCapture, ForHollowIons, ForImpactIonization, 
-       ForPhotoEmission, ForPhotoIonization, ForPhotoRecombination, ForRasExcitations, ForStepwiseDecay, FineStructure, FineStructureLS, FromBasis, 
+       ForAutoIonization, ForDielectronicCapture, ForDielectronicRecombination, ForElectronCapture, ForHollowIons, ForImpactIonization,
+       ForPhotoEmission, ForPhotoIonization, ForPhotoRecombination, ForRasExcitations, ForStepwiseDecay, FineStructure, FineStructureLS, FromBasis,
        generate, GreenSettings, GreenChannel, GreenExpansion, getDefaults, Green, Gui, GroundConfiguration, GeneralizedConfigurations,
        GetParity, generateConfiguration, generateConfigurations,
        Hamiltonian, Hfs, HyperfineInduced, HighHarmonic, HFS, HydrogenicIon, HarmonicQuantizationAxis, HundsRules, HyperfineStructure,
-       interpolate, integrate, Integral, ImpactExcAuto, ImpactExcitation, ImpactExcitationAutoion, ImpactIonization, 
+       interpolate, integrate, Integral, ImpactExcAuto, ImpactExcitation, ImpactExcitationAutoion, ImpactIonization,
        InteractionStrength, InternalConv, InternalConversion, InternalRecombination, Isotope, IsotopeShift, IsotopicFraction, IsOccupied,
-       Kronecker, 
-       LandeF, LandeJ, LandeZeeman, Level, LevelSelection, LevelSymmetry, LineSelection, LSjj, LSjjSettings, LeftCircular, 
+       Kronecker,
+       LandeF, LandeJ, LandeZeeman, Level, LevelSelection, LevelSymmetry, LineSelection, LSjj, LSjjSettings, LeftCircular,
        LeadingConfiguration, LeadingConfigurationR,
-       ManyElectron, MeanFieldSettings, MeanFieldBasis, MeanFieldMultiplet, minus, Model, modify, 
-       MultiPhotonDE, MultiPhotonDeExcitation, MultiPhotonDoubleIon, 
-       MultiPI, MultiPDI, MultiPhotonIonization, MultipoleMoment, MultipolePolarizibility, Multiplet, MeanConfiguration, MeanOccupation, 
+       ManyElectron, MeanFieldSettings, MeanFieldBasis, MeanFieldMultiplet, minus, Model, modify,
+       MultiPhotonDE, MultiPhotonDeExcitation, MultiPhotonDoubleIon,
+       MultiPI, MultiPDI, MultiPhotonIonization, MultipoleMoment, MultipolePolarizibility, Multiplet, MeanConfiguration, MeanOccupation,
        Multiplicity,
        NoAmplitude, Nuclear, NoneQed, NoProcess, NoProperty, NonrelativisticBasis, NumberOfElectrons,
        OneElectronSettings, OneElectronSpectrum, Orbital, oplus, OccupationDifference, OpenShellNumber, OpenShells, OpenSubshells,
-       PairA1P, PairAnnihilation1Photon, PairAnnihilation2Photon, PairProduction, Parity, ParityNonConservation, ParticleScattering, 
-       PathwaySelection, PeriodicTable, perform, 
-       Photo, PhotoDouble, PhotoDoubleIonization, PhotoEmission, PhotoExc, PhotoExcAuto, PhotoExcFluor, 
-       PhotoExcitation, PhotoExcitationAutoion, PhotoExcitationFluores, PhotoIonAuto, PhotoIonFluor, PhotoIonization, 
-       PhotoIonizationAutoion, PhotoIonizationFluores, PhotoRecombination,   
+       PairA1P, PairAnnihilation1Photon, PairAnnihilation2Photon, PairProduction, Parity, ParityNonConservation, ParticleScattering,
+       PathwaySelection, PeriodicTable, perform,
+       Photo, PhotoDouble, PhotoDoubleIonization, PhotoEmission, PhotoExc, PhotoExcAuto, PhotoExcFluor,
+       PhotoExcitation, PhotoExcitationAutoion, PhotoExcitationFluores, PhotoIonAuto, PhotoIonFluor, PhotoIonization,
+       PhotoIonizationAutoion, PhotoIonizationFluores, PhotoRecombination,
        Plasma, plus, Polarity, PrintWarnings, provide, Pulse,
-       QedPetersburg, QedSydney, 
-       RacahAlgebra, RacahExpression, Radial, RadialIntegrals, Radiative, RadiativeAuger, RAuger, RasSettings, RasStep, 
+       QedPetersburg, QedSydney,
+       RacahAlgebra, RacahExpression, Radial, RadialIntegrals, Radiative, RadiativeAuger, RAuger, RasSettings, RasStep,
        RasExpansion, RayleighCompton, recast, Rec, REDA, READI, Representation, ReducedDensityMatrix, RadiativeOpacity,
        RestrictMaximumDisplacements, RestrictNoElectronsTo, RestrictParity, RestrictToShellDoubles, RequestMinimumOccupation, RequestMaximumOccupation,
        ResonantInelastic, RemoveElectrons, RestrictExcitations, RelativisticConfigurations, run,
        SchiffMoment, Semiempirical, setDefaults, Shell, ShellSelection, SolidAngle, Spectroscopy, SphericalTensor, SpinAngular, StarkShift,
-       StartFromHydrogenic, StartFromPrevious, StrongField, StrongField2, Subshell, StaticQuantizationAxis, StaticField, SelfConsistent, 
+       StartFromHydrogenic, StartFromPrevious, StrongField, StrongField2, Subshell, StaticQuantizationAxis, StaticField, SelfConsistent,
        SuperConfiguration,
        tabulate, TestFrames, tools, Triangle, TwoElectronOnePhoton, TimeHarmonicField, TotalAM,
        UseBabushkin, UseCoulomb, UseGauge,
        ValenceOccupation, ValenceShells,
        WeightedCartesian, W3j, W6j, W9j,
-       Yields, Ylm, 
+       Yields, Ylm,
        Zeeman
-     
+
 # Basic data and data structures
 include("module-Basics.jl");            using ..Basics
 include("module-Radial.jl");            using ..Radial
@@ -144,7 +142,7 @@ if  incProperties
 include("module-MultipoleMoment.jl")
 include("module-ParityNonConservation.jl")
 # Functions/methods for atomic properties
-include("module-Einstein.jl")    
+include("module-Einstein.jl")
 include("module-Hfs.jl")
 include("module-IsotopeShift.jl")
 include("module-LandeZeeman.jl")
@@ -168,9 +166,9 @@ include("module-PhotoExcitationFluores.jl")
 include("module-PhotoExcitationAutoion.jl")
 include("module-RayleighCompton.jl")
 include("module-ParticleScattering.jl")
-include("module-BeamPhotoExcitation.jl") 
-include("module-HyperfineInduced.jl") 
-include("module-ResonantInelastic.jl") 
+include("module-BeamPhotoExcitation.jl")
+include("module-HyperfineInduced.jl")
+include("module-ResonantInelastic.jl")
 include("module-DecayYield.jl")
 include("module-ImpactExcitation.jl")
 include("module-CoulombExcitation.jl")
@@ -187,9 +185,9 @@ include("module-ImpactExcitationAutoion.jl")
 include("module-RadiativeAuger.jl")
 include("module-MultiPhotonIonization.jl")
 include("module-MultiPhotonDoubleIon.jl")
-include("module-InternalConversion.jl") 
-include("module-InternalRecombination.jl") 
-include("module-TwoElectronOnePhoton.jl") 
+include("module-InternalConversion.jl")
+include("module-InternalRecombination.jl")
+include("module-TwoElectronOnePhoton.jl")
 include("module-DoubleAutoIonization.jl")
 #= Further processes, not yet included into the code
 include("module-REDA.jl")
@@ -205,12 +203,12 @@ end
 if incStrongField
 # Functions/methods for the computation of atomic responses
 ## include("module-HighHarmonic.jl")
-include("module-StrongField.jl") 
+include("module-StrongField.jl")
 end
 
 if incAtomicCompass
 # Functions/methods for the computation of atomic-compass simulations
-include("module-AtomicCompass.jl") 
+include("module-AtomicCompass.jl")
 end
 
 # Functions/methods for semi-empirical estimations
@@ -252,17 +250,15 @@ include("module-ManyElectronAZ.jl")
 
 # All test functions/methods stay with the JAC root module
 include("module-TestFrames.jl");        using ..TestFrames
-    
+
 function __init__()
     # The following variables need to be initialized at runtime to enable precompilation
     global JAC_SUMMARY_IOSTREAM = stdout
     global JAC_TEST_IOSTREAM    = stdout
 end
 
-println("\nWelcome to JAC (JAC):  A community approach to the computation of atomic structures, " *
+println("\nWelcome to Jena Atomic Calculator (JAC):  A community approach to the computation of atomic structures, " *
         "cascades and time evolutions [(C) Copyright by Stephan Fritzsche, Jena (2018-2025)].")
-        
+
 
 end
-
-
