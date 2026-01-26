@@ -1,5 +1,5 @@
-name = "JenaAtomicCalculator"
-uuid = "830ae420-d14d-11e8-2f94-6b071437414d"
+name = "JAC"
+uuid = "a3f22aee-fa86-11f0-baad-a3ebf6911431"
 authors = ["Stephan Fritzsche <s.fritzsche@gsi.de>"]
 version = "0.3.0"
 
