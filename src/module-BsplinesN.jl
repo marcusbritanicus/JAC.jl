@@ -14,7 +14,7 @@
 module BsplinesN
 
 
-using  BSplineKit, Printf, ..Basics, ..Defaults, ..Nuclear, ..Radial, JenaAtomicCalculator
+using  BSplineKit, Printf, ..Basics, ..Defaults, ..Nuclear, ..Radial, JAC
 
 
 """
@@ -266,7 +266,7 @@ function generateOrbitalFromPrimitives(sh::Subshell, wc::Basics.Eigen, primitive
     orbital   = Orbital(sh, isBound, true, en, Px, Qx, Pprimex, Qprimex, Radial.Grid())
     
     # Renormalize the radial orbital   
-    wN        = sqrt( JenaAtomicCalculator.RadialIntegrals.overlap(orbital, orbital, primitives.grid) )
+    wN        = sqrt( JAC.RadialIntegrals.overlap(orbital, orbital, primitives.grid) )
     Px[1:mtp] = Px[1:mtp] / wN;    Pprimex[1:mtp] = Pprimex[1:mtp] / wN
     Qx[1:mtp] = Qx[1:mtp] / wN;    Qprimex[1:mtp] = Qprimex[1:mtp] / wN 
     

@@ -5,8 +5,8 @@
 """
 module BasicsAZ
 
-using  Printf,  LinearAlgebra, GaussQuadrature, JenaAtomicCalculator, ..Basics, ..TableStrings
-       ## using JenaAtomicCalculator ... since otherwise almost all other modules must be included explicitly
+using  Printf,  LinearAlgebra, GaussQuadrature, JAC, ..Basics, ..TableStrings
+       ## using JAC ... since otherwise almost all other modules must be included explicitly
        
 #==    ..AlphaVariation, ..AngularMomentum, ..Atomic, ..AtomicState,  ..AutoIonization,  ..Basics, ..BsplinesN, ..Cascade, 
        ..DecayYield, ..Defaults, ..DielectronicRecombination, ..DoubleAutoIonization, ..Einstein, ..FormFactor,

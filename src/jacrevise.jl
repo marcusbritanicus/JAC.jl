@@ -2,7 +2,7 @@
 import Pkg
 Pkg.activate(joinpath(@__DIR__, ".."))
 using Revise
-using JenaAtomicCalculator
+using JAC
 
 # ] pkg> activate
 #   pkg> dev ..   # development environment

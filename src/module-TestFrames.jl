@@ -6,7 +6,7 @@
 module TestFrames
 
 
-using  Printf, SymEngine, JLD2, JenaAtomicCalculator, 
+using  Printf, SymEngine, JLD2, JAC, 
        ..AngularMomentum, ..Basics, ..Continuum, ..Defaults, ..ManyElectron, ..Nuclear, ..Radial, ..TableStrings
 
 export testDummy

@@ -6,7 +6,7 @@
 module Defaults
 
 
-using Dates,  JenaAtomicCalculator, ..Basics,  ..Radial,  ..Math
+using Dates,  JAC, ..Basics,  ..Radial,  ..Math
 # 2014 CODATA recommended values, obtained from http://physics.nist.gov/cuu/Constants/
 
 export  convertUnits, getDefaults,  setDefaults
@@ -473,8 +473,8 @@ function setDefaults(sa::String, sb::String)
         close(GBL_SUMMARY_IOSTREAM)
     elseif    sa == "print test: open"
         global GBL_PRINT_TEST    = true
-        JenaAtomicCalculator.JAC_TEST_IOSTREAM = open(sb, "w") 
-        println(JenaAtomicCalculator.JAC_TEST_IOSTREAM, "Test report file opened at $( string(now())[1:16] ): \n" *
+        JAC.JAC_TEST_IOSTREAM = open(sb, "w") 
+        println(JAC.JAC_TEST_IOSTREAM, "Test report file opened at $( string(now())[1:16] ): \n" *
                                                         "============================================  \n")
     elseif    sa == "print test: close"
         global GBL_PRINT_TEST    = false
@@ -638,7 +638,7 @@ function getDefaults(sa::String)
     elseif    sa == "data-X flag/stream"                                return ( (GBL_PRINT_DATAX, GBL_DATAX_IOSTREAM) )
     elseif    sa == "data-Y flag/stream"                                return ( (GBL_PRINT_DATAY, GBL_DATAY_IOSTREAM) )
     elseif    sa == "summary flag/stream"                               return ( (GBL_PRINT_SUMMARY, GBL_SUMMARY_IOSTREAM) )
-    elseif    sa == "test flag/stream"                                  return ( (GBL_PRINT_TEST,    JenaAtomicCalculator.JAC_TEST_IOSTREAM) )
+    elseif    sa == "test flag/stream"                                  return ( (GBL_PRINT_TEST,    JAC.JAC_TEST_IOSTREAM) )
     else      error("Unsupported keystring:: $sa")
     end
 end

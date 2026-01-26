@@ -6,7 +6,7 @@
 #  
 #  Copy to desktop             scp -r JAC.jl/ fritzsch@10.140.119.236:~/fri/.
 """
-`module JenaAtomicCalculator`  
+`module JAC`  
     ... Jena Atomic Calculator (JAC) provides tools for performing atomic (structure) calculations at various degrees of complexity 
         and sophistication. It has been designed to not only calculate atomic level structures and properties [such as g-factors or
         hyperfine and isotope-shift parameters] but also transition amplitudes between bound-state levels [for the dipole 
@@ -15,9 +15,9 @@
         processes. 
 
 """
-module JenaAtomicCalculator
+module JAC
 
-const JAC = JenaAtomicCalculator
+const JAC = JAC
 
 
 # Restrict the size and functionality of code by just including certain modules, while others are not taken into account.
@@ -259,7 +259,7 @@ function __init__()
     global JAC_TEST_IOSTREAM    = stdout
 end
 
-println("\nWelcome to JenaAtomicCalculator (JAC):  A community approach to the computation of atomic structures, " *
+println("\nWelcome to JAC (JAC):  A community approach to the computation of atomic structures, " *
         "cascades and time evolutions [(C) Copyright by Stephan Fritzsche, Jena (2018-2025)].")
         
 

@@ -7,7 +7,7 @@ module Math
 
 
 using GSL
-using JenaAtomicCalculator, ..Radial
+using JAC, ..Radial
 
 
 """
@@ -59,13 +59,13 @@ end
 """
 function derivative(input::Array{Float64}, i::Int64) :: Float64
     
-    n = JenaAtomicCalculator.Defaults.FINITE_DIFFERENCE_NPOINTS
+    n = JAC.Defaults.FINITE_DIFFERENCE_NPOINTS
     result ::Float64 = 0.
     
     if i <= n
     
         for j = 1:2*n + 1
-            result += JenaAtomicCalculator.Defaults.weights[i, j] * input[j]
+            result += JAC.Defaults.weights[i, j] * input[j]
         end
         return result
     end
@@ -73,14 +73,14 @@ function derivative(input::Array{Float64}, i::Int64) :: Float64
     if size(input, 1) - i < n
     
         for j = 1:2*n + 1
-            result += JenaAtomicCalculator.Defaults.weights[2*n + 1 + i - size(input, 1), j] * input[size(input, 1) - 2*n - 1 + j]
+            result += JAC.Defaults.weights[2*n + 1 + i - size(input, 1), j] * input[size(input, 1) - 2*n - 1 + j]
         end
     
         return result
     end
     
     for j = i - n:i+n
-        result += JenaAtomicCalculatorDefaults.weights[n + 1, j - i + n + 1] * input[j]
+        result += JACDefaults.weights[n + 1, j - i + n + 1] * input[j]
     end
     
     return result
@@ -94,8 +94,8 @@ end
         is returned.
 """
 function integrateFitTransform(f::Function, mtp::Int64, grid::Radial.Grid)
-    n      = size(JenaAtomicCalculator.Defaults.newtonCotesCoefficients, 1)
-    newtonCotesCoefficientsOnGrid = copy(JenaAtomicCalculator.Defaults.newtonCotesCoefficients) * grid.h
+    n      = size(JAC.Defaults.newtonCotesCoefficients, 1)
+    newtonCotesCoefficientsOnGrid = copy(JAC.Defaults.newtonCotesCoefficients) * grid.h
     i0     = 2
     gamma  = 0.
     result = 0.
@@ -126,8 +126,8 @@ end
         function; a value::Float64 is returned.
 """
 function integrateFit(f::Function, mtp::Int64, grid::Radial.Grid)
-    n      = size(JenaAtomicCalculator.Defaults.newtonCotesCoefficients, 1)
-    newtonCotesCoefficientsOnGrid = copy(JenaAtomicCalculator.Defaults.newtonCotesCoefficients) * grid.h
+    n      = size(JAC.Defaults.newtonCotesCoefficients, 1)
+    newtonCotesCoefficientsOnGrid = copy(JAC.Defaults.newtonCotesCoefficients) * grid.h
 
     i0     = 2
     gamma  = 0.
