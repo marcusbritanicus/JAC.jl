@@ -18,7 +18,7 @@ using Printf, ..AngularMomentum, ..Basics, ..Continuum, ..Defaults, ..Radial, ..
     + photonEnergies                ::Array{Float64,1}    ... List of photon energies [in user-selected units].
     + electronEnergies              ::Array{Float64,1}    ... List of electron energies; usually only one of these lists are utilized.
     + thetas                        ::Array{Float64,1}    ... List of theta-values if angle-differential CS are calculated explicitly.
-    + phis                          ::Array{Float64,1}    ... List of phi]-values if angle-differential CS are calculated explicitly.
+    + phis                          ::Array{Float64,1}    ... List of phi-values if angle-differential CS are calculated explicitly.
     + calcAnisotropy                ::Bool                ... True, if the beta anisotropy parameters are to be calculated and false otherwise (o/w).
     + calcPartialCs                 ::Bool                ... True, if partial cross sections are to be calculated and false otherwise.
     + calcTimeDelay                 ::Bool                ... True, if time-delays are to be calculated and false otherwise.
