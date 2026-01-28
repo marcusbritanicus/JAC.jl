@@ -1,7 +1,7 @@
 name = "JAC"
 uuid = "a3f22aee-fa86-11f0-baad-a3ebf6911431"
-authors = ["Stephan Fritzsche <s.fritzsche@gsi.de>"]
 version = "0.3.0"
+authors = ["Stephan Fritzsche <s.fritzsche@gsi.de>"]
 
 [deps]
 BSplineKit = "093aae92-e908-43d7-9660-e50ee39d5a0a"
@@ -45,7 +45,7 @@ GSL = "1.0"
 GaussQuadrature = "0.5"
 HypergeometricFunctions = "0.3"
 IJulia = "1.27"
-JLD2 = "0.5"
+JLD2 = "0.5, 0.6"
 MacroTools = "0.5"
 Plots = "1.40"
 Pluto = "0.20"
