@@ -1,7 +1,7 @@
 name = "JAC"
 uuid = "a3f22aee-fa86-11f0-baad-a3ebf6911431"
-authors = ["Stephan Fritzsche <s.fritzsche@gsi.de>"]
 version = "0.3.0"
+authors = ["Stephan Fritzsche <s.fritzsche@gsi.de>"]
 
 [deps]
 BSplineKit = "093aae92-e908-43d7-9660-e50ee39d5a0a"
@@ -36,7 +36,7 @@ WignerSymbols = "9f57e263-0b3d-5e2e-b1be-24f2bb48858b"
 BSplineKit = "0.19"
 BenchmarkTools = "1.6"
 Cubature = "1.5"
-DataStructures = "0.18"
+DataStructures = "0.18, 0.19"
 DelimitedFiles = "1.9"
 Dierckx = "0.5"
 FastGaussQuadrature = "1.0"
