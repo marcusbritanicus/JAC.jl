@@ -170,18 +170,18 @@ function AsfSettings(settings::AsfSettings;
     jjLS::Union{Nothing,LSjjSettings}=nothing,  
     levelSelectionCI::Union{Nothing,LevelSelection}=nothing,        printout::Bool=false)
 
-    if  generateScf         == nothing   generateScfx          = settings.generateScf           else   generateScfx          = generateScf          end 
-    if  eeInteraction       == nothing   eeInteractionx        = settings.eeInteraction         else   eeInteractionx        = eeInteraction        end 
-    if  scField             == nothing   scFieldx              = settings.scField               else   scFieldx              = scField              end 
-    if  startScfFrom        == nothing   startScfFromx         = settings.startScfFrom          else   startScfFromx         = startScfFrom         end 
-    if  maxIterationsScf    == nothing   maxIterationsScfx     = settings.maxIterationsScf      else   maxIterationsScfx     = maxIterationsScf     end 
-    if  accuracyScf         == nothing   accuracyScfx          = settings.accuracyScf           else   accuracyScfx          = accuracyScf          end 
-    if  shellSequenceScf    == nothing   shellSequenceScfx     = settings.shellSequenceScf      else   shellSequenceScfx     = shellSequenceScf     end 
-    if  frozenSubshells     == nothing   frozenSubshellsx      = settings.frozenSubshells       else   frozenSubshellsx      = frozenSubshells      end 
-    if  eeInteractionCI     == nothing   eeInteractionCIx      = settings.eeInteractionCI       else   eeInteractionCIx      = eeInteractionCI      end 
-    if  qedModel            == nothing   qedModelx             = settings.qedModel              else   qedModelx             = qedModel             end 
-    if  jjLS                == nothing   jjLSx                 = settings.jjLS                  else   jjLSx                 = jjLS                 end 
-    if  levelSelectionCI    == nothing   levelSelectionCIx     = settings.levelSelectionCI      else   levelSelectionCIx     = levelSelectionCI     end 
+    if  isnothing(generateScf)           generateScfx          = settings.generateScf           else   generateScfx          = generateScf          end 
+    if  isnothing(eeInteraction)         eeInteractionx        = settings.eeInteraction         else   eeInteractionx        = eeInteraction        end 
+    if  isnothing(scField)               scFieldx              = settings.scField               else   scFieldx              = scField              end 
+    if  isnothing(startScfFrom)          startScfFromx         = settings.startScfFrom          else   startScfFromx         = startScfFrom         end 
+    if  isnothing(maxIterationsScf)      maxIterationsScfx     = settings.maxIterationsScf      else   maxIterationsScfx     = maxIterationsScf     end 
+    if  isnothing(accuracyScf)           accuracyScfx          = settings.accuracyScf           else   accuracyScfx          = accuracyScf          end 
+    if  isnothing(shellSequenceScf)      shellSequenceScfx     = settings.shellSequenceScf      else   shellSequenceScfx     = shellSequenceScf     end 
+    if  isnothing(frozenSubshells)       frozenSubshellsx      = settings.frozenSubshells       else   frozenSubshellsx      = frozenSubshells      end 
+    if  isnothing(eeInteractionCI)       eeInteractionCIx      = settings.eeInteractionCI       else   eeInteractionCIx      = eeInteractionCI      end 
+    if  isnothing(qedModel)              qedModelx             = settings.qedModel              else   qedModelx             = qedModel             end 
+    if  isnothing(jjLS)                  jjLSx                 = settings.jjLS                  else   jjLSx                 = jjLS                 end 
+    if  isnothing(levelSelectionCI)      levelSelectionCIx     = settings.levelSelectionCI      else   levelSelectionCIx     = levelSelectionCI     end 
     
     AsfSettings(generateScfx, eeInteractionx, scFieldx, startScfFromx, maxIterationsScfx, accuracyScfx, 
                 shellSequenceScfx, frozenSubshellsx, eeInteractionCIx, qedModelx, jjLSx, levelSelectionCIx)
@@ -280,7 +280,6 @@ end
     ... simple constructor for given closed-shell occupation (such as "[Ne]"), and where standardOrbitals is set to true.
 """
 function CsfR(sa::String)
-        ##x wa = subshellsFromClosedShellConfiguration(sa)
         wa = Basics.extractFromConfiguration(Basics.ClosedSubshells(), sa)
 
         occupation = Int64[];	  subshellJ = AngularJ64[];	subshellX  = AngularJ64[]
@@ -601,7 +600,7 @@ function Basis(sa::String, cslFilename::String, rwfFilename::String)
         #
         println("ManyElectron.Basis-aa: warning ... The standard grid is set; make an interactive request if not appropriate.") 
         grid     = Radial.Grid(true)
-        basis    = Basics.read("CSF list: Grasp92", cslFilename)
+        basis    = Basics.read(ReadCslFileGrasp92(), cslFilename)
         orbitals = Basics.readOrbitalFileGrasp92(rwfFilename, grid)
     else  error("stop a")
     end

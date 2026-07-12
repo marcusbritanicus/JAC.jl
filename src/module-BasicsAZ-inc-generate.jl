@@ -96,7 +96,7 @@ function Basics.generate(repType::AtomicState.OneElectronSpectrum, rep::AtomicSt
     Basics.display(stdout, refBasis.orbitals, rep.grid; longTable=false)
     nuclearPot    = Nuclear.nuclearPotential(nModel, rep.grid)
     @warn("The potential is generated for the mean-field basis but not (yetc hosen for the selected levels.")
-    electronicPot = Basics.compute("radial potential: Dirac-Fock-Slater", rep.grid, refBasis)
+    electronicPot = Basics.computePotential(Basics.DFSField(1.0), rep.grid, refBasis)
     meanPot       = Basics.add(nuclearPot, electronicPot)
     
     println("")
@@ -107,8 +107,8 @@ function Basics.generate(repType::AtomicState.OneElectronSpectrum, rep::AtomicSt
     shellList = Basics.generateShellList(1, settings.nMax, settings.lValues)
     subshellList = Subshell[]
     for  shell in shellList     append!(subshellList, Basics.shellSplitIntoSubshells(shell))    end
-    primitives = BsplinesN.generatePrimitives(rep.grid)
-    orbitals   = BsplinesN.generateOrbitals(subshellList, meanPot, nModel, primitives; printout=true)
+    primitives = Bsplines.generatePrimitives(rep.grid)
+    orbitals   = Bsplines.generateOrbitals(subshellList, meanPot, nModel, primitives; printout=true)
     
     # Print all results to screen
     Basics.display(stdout, orbitals, rep.grid; longTable=true)
@@ -143,7 +143,6 @@ function Basics.generate(repType::AtomicState.CiExpansion, rep::AtomicState.Repr
     # Generate a list of relativistic configurations and  CSF's for the given subshell list
     relconfList = ConfigurationR[]
     for  conf in rep.refConfigs
-        ##x wa = Basics.generateConfigurationRs(conf)
         wa = Basics.generateConfigurations(Basics.RelativisticConfigurations(), conf)
         append!( relconfList, wa)
     end
@@ -205,8 +204,8 @@ function Basics.generate(repType::AtomicState.RasExpansion, rep::AtomicState.Rep
     ## electronicPot  = Basics.compute("radial potential: Dirac-Fock-Slater", rep.grid, priorMultiplet.levels[1].basis)
     ## meanPot        = Basics.add(nuclearPot, electronicPot)
     subshellList   = Basics.extractRelativisticSubshellList(rep)             ## extract all subshells that occur in the RAS computation
-    primitives     = BsplinesN.generatePrimitives(rep.grid)
-    startOrbitals  = BsplinesN.generateOrbitals(subshellList, nuclearPot, nModel, primitives, printout=true)  ## generate a spectrum of sufficient size
+    primitives     = Bsplines.generatePrimitives(rep.grid)
+    startOrbitals  = Bsplines.generateOrbitals(subshellList, nuclearPot, nModel, primitives, printout=true)  ## generate a spectrum of sufficient size
     if output    results = Base.merge( results, Dict("reference multiplet" => Multiplet("Reference multiplet:", priorMultiplet.levels) ) )  end
 
     # The asfSettings only define the CI part of the RAS steps and partly derived from the RasSettings
@@ -265,13 +264,12 @@ function Basics.generate(repType::AtomicState.GreenExpansion, rep::AtomicState.R
     # Generate all (non-relativistic) configurations from the bound configurations due to the given excitation scheme 
     confList = Basics.generateConfigurationsForExcitationScheme(rep.refConfigs, repType.excitationScheme, settings.nMax, settings.lValues)
     # Print (if required) information about the generated configuration list
-    ##x if  settings.printBefore    Basics.display(stdout, confList)    end
     if  settings.printBefore    Basics.displayConfigurations(stdout, confList)    end
     
     # Generate shell list abd a full single-electron spectrum for this potential
     subshellList = Basics.extractRelativisticSubshellList(confList)                      ## extract all subshells that occur in confList
-    primitives   = BsplinesN.generatePrimitives(rep.grid)
-    orbitals     = BsplinesN.generateOrbitals(subshellList, meanPot, nModel, primitives, printout=true) ## generate a spectrum of sufficient size
+    primitives   = Bsplines.generatePrimitives(rep.grid)
+    orbitals     = Bsplines.generateOrbitals(subshellList, meanPot, nModel, primitives, printout=true) ## generate a spectrum of sufficient size
     Defaults.setDefaults("relativistic subshell list", subshellList; printout=true)
     Basics.display(stdout, orbitals, rep.grid)
 
@@ -299,23 +297,21 @@ end
 
 
 """
-`Basics.generate("condensed multiplet: by single weight", multiplet::Multiplet)`  
-    ... to condense/reduce the number of CSF in the basis of the given multiplet due to a single 'weight'; 
+`Basics.generate(::CondensedMultiplet, multiplet::Multiplet)`
+    ... to condense/reduce the number of CSF in the basis of the given multiplet due to a single 'weight';
         a multiplet::Multiplet is returned.  **Not yet implemented !**
 """
-function Basics.generate(sa::String, multiplet::Multiplet)
-    !(sa == "condensed multiplet: by single weight")   &&   error("Unsupported keystring = $sa")
+function Basics.generate(::CondensedMultiplet, multiplet::Multiplet)
     error("Not yet implemented !")
 end
 
 
 
 """
-`Basics.generate("configuration list: NR, from basis", basis::Basis)`  
+`Basics.generate(::ConfigurationListNRFromBasis, basis::Basis)`
     ... to (re-) generate the list of NR configurations from the given basis; a confList::Array{Configuration,1} is returned.
 """
-function Basics.generate(sa::String, basis::Basis)
-    !(sa == "configuration list: NR, from basis")   &&   error("Unsupported keystring = $sa")
+function Basics.generate(::ConfigurationListNRFromBasis, basis::Basis)
     confList    = Configuration[]
     NoElectrons = sum( basis.csfs[1].occupation )
     for  csf in basis.csfs
@@ -336,14 +332,13 @@ end
 
 
 """
-`Basics.generate("configuration list: NR, single-configuration", refConf::Configuration, NoExcitations::Int64, fromShells::Array{Shell,1},`
-                    toShells::Array{Shell,1})  
-    ... to generate a non-relativistic configuration list, including the given reference configuration (refConf) and with 
-        all configurations that differ by NoExcitations from the fromShells into the toShells; an Array{Configuration,1} 
+`Basics.generate(::ConfigurationListNRFromConfiguration, refConf::Configuration, NoExcitations::Int64, fromShells::Array{Shell,1},`
+                    toShells::Array{Shell,1})
+    ... to generate a non-relativistic configuration list, including the given reference configuration (refConf) and with
+        all configurations that differ by NoExcitations from the fromShells into the toShells; an Array{Configuration,1}
         is returned.
 """
-function Basics.generate(sa::String, refConf::Configuration, NoExcitations::Int64, fromShells::Array{Shell,1}, toShells::Array{Shell,1})
-    !(sa == "configuration list: NR, single-configuration")   &&   error("Unsupported keystring = $sa")
+function Basics.generate(::ConfigurationListNRFromConfiguration, refConf::Configuration, NoExcitations::Int64, fromShells::Array{Shell,1}, toShells::Array{Shell,1})
     confList = [refConf]
     # First prepare a proper reference configuration that also includes all fromShells and toShells with zero occupation
     shellDict = deepcopy(refConf.shells)
@@ -431,7 +426,6 @@ end
         by subshellList; a list::Array{CsfR,1} is returned.
 """
 function Basics.generateCsfRs(conf::ConfigurationR, subshellList::Array{Subshell,1})
-    ##x parity  = Basics.determineParity(conf)
     parity  = Basics.extractFromConfiguration(Basics.GetParity(), conf)
     csfList = CsfR[];   useStandardSubshells = true;    first = true;    previousCsfs = CsfR[]
     # subhshellList = Subshell[];   
@@ -469,64 +463,16 @@ function Basics.generateCsfRs(conf::ConfigurationR, subshellList::Array{Subshell
     
     return( previousCsfs )
 end
-
-
-#==
-"""
-`Basics.generate("CSF list: from single ConfigurationR", conf::ConfigurationR, subshellList::Array{Subshell,1})` 
-    ... to construct from a given (relativistic) configuration all possible CSF with regard to the subshell order as specified 
-        by subshellList; a list::Array{CsfR,1} is returned.
-"""
-function Basics.generate(sa::String, conf::ConfigurationR, subshellList::Array{Subshell,1})
-    parity  = Basics.determineParity(conf)
-    csfList = CsfR[];   useStandardSubshells = true;    first = true;    previousCsfs = CsfR[]
-    # subhshellList = Subshell[];   
-    for  subsh in subshellList
-        if   subsh in keys(conf.subshells)    occ = conf.subshells[subsh]    else    occ = 0    end
-        if   first
-            stateList   = ManyElectron.provideSubshellStates(subsh, occ)
-            currentCsfs = CsfR[]
-            for  state in stateList
-                push!( currentCsfs, CsfR( true, AngularJ64(state.Jsub2//2), parity, [state.occ], [state.nu],
-                                            [AngularJ64(state.Jsub2//2)], [AngularJ64(state.Jsub2//2)], Subshell[]) )
-            end
-            previousCsfs = copy(currentCsfs)
-            first        = false
-        else
-            # Now support also all couplings of the subshell states with the CSFs that were built-up so far
-            stateList   = ManyElectron.provideSubshellStates(subsh, occ)
-            currentCsfs = CsfR[]
-            for  csf in  previousCsfs
-                for  state in stateList
-                    occupation = deepcopy(csf.occupation);    seniorityNr = deepcopy(csf.seniorityNr);    
-                    subshellJ  = deepcopy(csf.subshellJ);     subshells = deepcopy(csf.subshells)
-                    push!(occupation, state.occ);   push!(seniorityNr, state.nu);   push!(subshellJ, AngularJ64(state.Jsub2//2) ) 
-                    push!(subshells, subsh)
-                    newXList = oplus( csf.subshellX[end], AngularJ64(state.Jsub2//2) )
-                    for  newX in newXList
-                        subshellX = deepcopy(csf.subshellX);   push!(subshellX, newX) 
-                        push!( currentCsfs, CsfR( true, subshellX[end], parity, occupation, seniorityNr, subshellJ, subshellX, Subshell[]) ) 
-                    end
-                end
-            end
-            previousCsfs = copy(currentCsfs)
-        end
-    end
-    
-    return( previousCsfs )
-end  ==#
     
 
 
 """
-`Basics.generate("shells: ordered list for NR configurations", confs::Array{Configuration,1})`  
-    ... to generate for confs, i.e. all the given (non-relativistic) configurations, a common and ordered shell list; 
+`Basics.generate(::OrderedShellList, confs::Array{Configuration,1})`
+    ... to generate for confs, i.e. all the given (non-relativistic) configurations, a common and ordered shell list;
         a list::Array{Shell,1} is returned.
 """
-function Basics.generate(sa::String, confs::Array{Configuration,1})
-    shells = Shell[]   
-
-    !(sa == "shells: ordered list for NR configurations")  &&   error("Unsupported keystring = $sa")
+function Basics.generate(::OrderedShellList, confs::Array{Configuration,1})
+    shells = Shell[]
 
     wa = Defaults.getDefaults("ordered shell list: non-relativistic", 11)
     ## wa = Defaults.getDefaults("ordered shell list: non-relativistic", 19)
@@ -559,56 +505,21 @@ function Basics.generateSubshellList(confs::Array{ConfigurationR,1})
 end
 
 
-#==
-"""
-`Basics.generate("subshells: ordered list for relativistic configurations", confs::Array{ConfigurationR,1})`  
-    ... to generate for confs, i.e. all the given (relativistic) configurations, common and ordered subshell list; 
-        a list::Array{Subshell,1} is returned.
-"""
-function Basics.generate(sa::String, confs::Array{ConfigurationR,1})
-    subshells = Subshell[]   
-
-    !(sa == "subshells: ordered list for relativistic configurations")  &&   error("Unsupported keystring = $sa")
-    
-    for  conf in confs
-        for  subsh in keys(conf.subshells)      push!(subshells, subsh)     end
-    end
-    subshells = Base.unique(subshells)
-    subshells = Base.sort( subshells, lt=Base.isless)
-    ## Do include 'empty' subshells into the subshell list if they are specified by the given configurations
-    ## if  a in ks   &&   confs[cf].subshells[a]  !=  0     push!(subshells, a);    break    end
-    
-
-    #== wa = Defaults.getDefaults("ordered subshell list: relativistic", 7)
-    for  a in wa
-        for  cf in 1:length(confs)
-            ks = keys(confs[cf].subshells)
-            ## Do include 'empty' subshells into the subshell list if they are specified by the given configurations
-            ## if  a in ks   &&   confs[cf].subshells[a]  !=  0     push!(subshells, a);    break    end
-            if  a in ks     push!(subshells, a);    break    end
-        end 
-    end ==#
-
-    return( subshells )
-end  ==#
-
 
 """
-`Basics.generate("subshells: ordered list for two bases", basisA::Basis,  basisB::Basis)`  
+`Basics.generate(::OrderedSubshellList, basisA::Basis, basisB::Basis)`
     ... to generate common and ordered subshell list for the two basis A and B; a list::Array{Subshell,1} is returned.
 """
-function Basics.generate(sa::String, basisA::Basis,  basisB::Basis)
+function Basics.generate(::OrderedSubshellList, basisA::Basis, basisB::Basis)
     function areEqual(nn::Int64, sha::Array{Subshell,1}, shb::Array{Subshell,1})
         # Determines whether the first nn subshells are equal in sha and shb (true) or not (false)
-        for  i = 1:nx   
+        for  i = 1:nx
             if    sha[i] != shb[i]    return( false )   end
         end
         return( true )
     end
-        
-    subshells = Subshell[]   
 
-    !(sa == "subshells: ordered list for two bases")  &&   error("Unsupported keystring = $sa")
+    subshells = Subshell[]
 
     nx = min(length(basisA.subshells), length(basisB.subshells))
     if  areEqual(nx, basisA.subshells, basisB.subshells)
@@ -652,30 +563,27 @@ function Basics.generate(sa::String, basisA::Basis,  basisB::Basis)
 end
 
 
+"""
+`Basics.generate(::SlaterTypeSpectrum, N::Int64, potential::Radial.Potential, grid::Radial.Grid; N_0::Int64=30, alpha_0::Float64=1.0,`
+                    beta_0::Float64=1.1)
+    ... to generate a complete one-electron spectrum with N positive and N negative states, and by using even-tempered Slater-type
+        orbitals (STO) with parameters ``\\alpha_i = \\alpha_0 \\beta_0^i``; a spectrum::SingleElecSpectrum is returned where just
+        N0 positive and N_0 negative are kept for later use.  **Not yet implemented !**
+"""
+function Basics.generate(::SlaterTypeSpectrum, N::Int64, potential::Radial.Potential, grid::Radial.Grid; N_0::Int64=30, alpha_0::Float64=1.0, beta_0::Float64=1.1)
+    error("Not yet implemented !")
+    return( nothing )
+end
+
 
 """
-`Basics.generate("single-electron spectrum: STO", N::Int64, potential::Radial.Potential, grid::Radial.Grid; N_0::Int64=30, alpha_0::Float64=1.0,
-                    beta_0::Float64=1.1)` 
-    ... to generate a complete one-electron spectrum with N positive and N negative states, and by using even-tempered Slater-type 
-        orbitals (STO) with parameters ``\alpha_i = \alpha_0 \beta_0^i``; a spectrum::SingleElecSpectrum is returned where just 
-        N0 positive and N_0 negative are kept for later use.  **Not yet implemented !**
-
-`Basics.generate("single-electron spectrum: STO, positive", N::Int64, potential::Radial.Potential, grid::Radial.Grid; N_0::Int64=30, alpha_0::Float64=1.0,
-                    beta_0::Float64=1.1)`  
+`Basics.generate(::SlaterTypeSpectrumPositive, N::Int64, potential::Radial.Potential, grid::Radial.Grid; N_0::Int64=30, alpha_0::Float64=1.0,`
+                    beta_0::Float64=1.1)
     ... to generate the same but to return only the N_0 positive states.  **Not yet implemented !**
 """
-function Basics.generate(sa::String, N::Int64, potential::Radial.Potential, grid::Radial.Grid; N_0::Int64=30, alpha_0::Float64=1.0, beta_0::Float64=1.1)
-    !(sa == "single-electron spectrum: STO"  &&  sa == "single-electron spectrum: STO, positive")   &&   error("Unsupported keystring = $sa")
+function Basics.generate(::SlaterTypeSpectrumPositive, N::Int64, potential::Radial.Potential, grid::Radial.Grid; N_0::Int64=30, alpha_0::Float64=1.0, beta_0::Float64=1.1)
     error("Not yet implemented !")
-
-    #= * define N normalized states in stoplus::Array{Vector{Float64},1} and stominus::Array{Vector{Float64},1} 
-        on the given grid and with given parameters
-    * calculate one-electron (NxN) Hamiltonian matrix with potential h_pq and overlap S_pq, p,q = 1..N
-    * solve generalized eigenvalue problem h c_vec = epsilon S c_vec
-    * set spectrum::SingleElecSpectrum with just N0 functions
-    * check normalization and orthogonality of the functions   =#
-
-    return( nothing )  
+    return( nothing )
 end
 
 
@@ -689,7 +597,6 @@ function Basics.generateBasis(confList::Array{Configuration,1}, symmetries::Arra
     #
     relconfList = ConfigurationR[]
     for  conf in confList
-        ##x wa = Basics.generateConfigurationRs(conf)
         wa = Basics.generateConfigurations(Basics.RelativisticConfigurations(), conf)
         append!( relconfList, wa)
     end
@@ -768,7 +675,6 @@ function Basics.generateBasis(refConfigs::Array{Configuration,1}, symmetries::Ar
     #
     relconfList = ConfigurationR[]
     for  conf in confList
-        ##x wa = Basics.generateConfigurationRs(conf)
         wa = Basics.generateConfigurations(Basics.RelativisticConfigurations(), conf)
         append!( relconfList, wa)
     end
@@ -998,39 +904,6 @@ function Basics.generateConfigurationsForExcitationScheme(confs::Array{Configura
 
     return( newConfList )
 end
-
-
-#==  August 2025, replaced by Basics.AddElectrons(), Basics.ExciteElectrons(), ...
-"""
-`Basics.generateConfigurationsWithElectronCapture(confs::Array{Configuration,1}, fromShells::Array{Shell,1}, toShells::Array{Shell,1}, noex::Int64)`  
-    ... generates a list of non-relativistic configurations for the given (reference) confs and with one additional (cpatured) 
-        electron. All (doubly) excited configurations with upto :NoExcitations displacements of electrons fromShells into toShells 
-        and 'one' additional electron in the toShells are taken into account. The may result in large configuration lists even for 
-        a moderate number of fromShell and/or toShells.
-"""
-function Basics.generateConfigurationsWithElectronCapture(confs::Array{Configuration,1}, fromShells::Array{Shell,1}, toShells::Array{Shell,1},
-                                                            noex::Int64)
-    newConfList = Configuration[];     NoElectrons = confs[1].NoElectrons + 1
-    confList    = Basics.generateConfigurations(confs, fromShells, toShells, noex)
-    # Now add one (captured) electron from the toShells to all configurations in confList
-    for  conf in confList
-        # Take one electron toShells and `add' it to conf
-        for  toShell  in  toShells
-            newShells = deepcopy( conf.shells )
-            if      haskey(conf.shells, toShell )  &&  conf.shells[toShell]  + 1 > 2*(2*toShell.l + 1)     continue    
-            elseif  haskey(conf.shells, toShell )  newShells[toShell] = newShells[toShell] + 1
-                    push!( newConfList, Configuration( newShells, NoElectrons))
-            else    newShells = Base.merge( newShells, Dict( toShell => 1))
-                    push!( newConfList, Configuration( newShells, NoElectrons))
-            end
-            if  false  println(">> Generate $(Configuration( newShells, NoElectrons)) with electron capture.")   end
-        end
-    end
-    newConfList = unique(newConfList)
-    
-    return( newConfList )
-end 
-==#
 
 
 """
@@ -1301,42 +1174,6 @@ function Basics.generateMeshCoordinates(mesh::Basics.AbstractMesh)
     
     return( coords )
 end
-
-
-#==
-"""
-`Basics.generateOrbitalsForPotential(grid::Radial.Grid, meanPot::Radial.Potential, subshellList::Array{Subshell,1})`  
-    ... generates a set of (start) orbitals from the given potential and for all the subshells in subshellList. 
-        A set of orbitals::Dict{Subshell, Orbital} is returned.
-"""
-function  Basics.generateOrbitalsForPotential(grid::Radial.Grid, meanPot::Radial.Potential, subshellList::Array{Subshell,1})
-    orbitals = Dict{Subshell, Orbital}()
-    
-    # Determine kappaMin and kappaMax
-    kappaMin = 0;   kappaMax = 0
-    for  subsh in subshellList   
-        if       subsh.kappa < kappaMin    kappaMin = subsh.kappa
-        elseif   subsh.kappa > kappaMax    kappaMax = subsh.kappa
-        end
-    end
-    
-    # Generate the primitives for a B-spline basis
-    wa = BsplinesN.generatePrimitives(grid)
-    
-    # Now cycle through all kappa symmetries
-    for  kappa = kappaMin:kappaMax
-        # Determine all requested subshells of symmetry kappa ... to compute them together
-        shList     = Subshell[];    for  subsh in subshellList    if kappa == subsh.kappa    push!( shList, subsh)    end    end
-        ##x shOrbitals = BsplinesN.generateOrbitalsForPotential(wa, kappa, shList, meanPot; printout=false)
-        shOrbitals = BsplinesN.generateOrbitals(shList, meanPot, Nuclear.Model(1.0), wa; printout=true)
-        for  sh in shList
-            orbitals = Base.merge( orbitals, Dict( sh => shOrbitals[sh]))
-        end
-    end
-
-    return( orbitals )
-end
-==#
 
 
 """

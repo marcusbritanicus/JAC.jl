@@ -527,11 +527,11 @@ function Settings(set::CoulombExcitation.Settings;
     printBefore::Union{Nothing,Bool}=nothing,                       lineSelection::Union{Nothing,LineSelection}=nothing,
     zerosGL::Union{Nothing,Int64}=nothing)  
     
-    if  ionEnergies         == nothing   ionEnergies          = set.ionEnergies             else  ionEnergiesx         = ionEnergies       end 
-    if  calcAlignment       == nothing   calcAlignmentx       = set.calcAlignment           else  calcAlignmentx       = calcAlignment     end 
-    if  printBefore         == nothing   printBeforex         = set.printBefore             else  printBeforex         = printBefore       end 
-    if  lineSelection       == nothing   lineSelectionx       = set.lineSelection           else  lineSelectionx       = lineSelection     end 
-    if  zerosGL             == nothing   zerosGLx             = set.zerosGL                 else  zerosGLx             = zerosGL           end 
+    if  isnothing(ionEnergies)           ionEnergies          = set.ionEnergies             else  ionEnergiesx         = ionEnergies       end 
+    if  isnothing(calcAlignment)         calcAlignmentx       = set.calcAlignment           else  calcAlignmentx       = calcAlignment     end 
+    if  isnothing(printBefore)           printBeforex         = set.printBefore             else  printBeforex         = printBefore       end 
+    if  isnothing(lineSelection)         lineSelectionx       = set.lineSelection           else  lineSelectionx       = lineSelection     end 
+    if  isnothing(zerosGL)               zerosGLx             = set.zerosGL                 else  zerosGLx             = zerosGL           end 
     
     Settings( ionEnergiesx, calcAlignmentx, printBeforex, lineSelectionx, zerosGLx)
 end
@@ -704,7 +704,6 @@ function  computeAmplitude(channel::CoulombExcitation.Channel, Mi::AngularM64, M
             wc = wc - beta * AngularMomentum.ClebschGordan(Lx, 0., 1., 0., tx, 0.) *
                       CoulombExcitation.computeKjTme(line.finalLevel, t, line.initialLevel)
             if  abs(Mint) > Lint   continue   end
-            ##x @show Lint, Mint, acos(line.q0/channel.q), wc
             wc = im^Lx * conj( AngularMomentum.sphericalYlm(Lint, Mint, acos(line.q0/channel.q), 0.) ) * wc
             wb = wb + wc
         end
@@ -816,7 +815,7 @@ end
 function determineChannels(finalLevel::Level, initialLevel::Level, q0::Float64, settings::CoulombExcitation.Settings)
     channels = CoulombExcitation.Channel[];  
     # Compute the q's and associated weights in the interval [q0, 10*q0]
-    gaussLegendre = Radial.GridGL("Finite", q0, 10*q0, settings.zerosGL);     qs = gaussLegendre.t;     ws = gaussLegendre.wt 
+    gaussLegendre = Radial.GridGL(Radial.GridGaussLegendreFinite(), q0, 10*q0, settings.zerosGL);     qs = gaussLegendre.t;     ws = gaussLegendre.wt
     for  (iq, q)  in  enumerate(qs)
         push!(channels, CoulombExcitation.Channel(q, ws[iq], ComplexF64(0.)) )
     end

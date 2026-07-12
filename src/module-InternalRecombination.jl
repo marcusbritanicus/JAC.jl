@@ -7,7 +7,7 @@
 module InternalRecombination
 
 
-using  Printf, ..AngularMomentum, ..Basics, ..Defaults, ..InteractionStrength, ..ManyElectron, ..Nuclear, 
+using  Printf, ..AngularMomentum, ..Basics, ..Bsplines, ..Defaults, ..InteractionStrength, ..ManyElectron, ..Nuclear,
                 ..Radial, ..SpinAngular, ..TableStrings
 
 """
@@ -65,12 +65,12 @@ function Settings(set::InternalRecombination.Settings;
     resonanceEnergyShift::Union{Nothing,Float64}=nothing,    gamma::Union{Nothing,Float64}=nothing,  
     lineSelection::Union{Nothing,LineSelection}=nothing,     operator::Union{Nothing,String}=nothing)  
     
-    if  rydbergShells        == nothing  rydbergShellsx        = set.rydbergShells        else  rydbergShellsx        = rydbergShells        end 
-    if  printBefore          == nothing  printBeforex          = set.printBefore          else  printBeforex          = printBefore          end 
-    if  resonanceEnergyShift == nothing  resonanceEnergyShiftx = set.resonanceEnergyShift else  resonanceEnergyShiftx = resonanceEnergyShift end 
-    if  gamma                == nothing  gammax                = set.gamma                else  gammax                = gamma                end 
-    if  lineSelection        == nothing  lineSelectionx        = set.lineSelection        else  lineSelectionx        = lineSelection        end 
-    if  operator             == nothing  operatorx             = set.operator             else  operatorx             = operator             end 
+    if  isnothing(rydbergShells)         rydbergShellsx        = set.rydbergShells        else  rydbergShellsx        = rydbergShells        end 
+    if  isnothing(printBefore)           printBeforex          = set.printBefore          else  printBeforex          = printBefore          end 
+    if  isnothing(resonanceEnergyShift)  resonanceEnergyShiftx = set.resonanceEnergyShift else  resonanceEnergyShiftx = resonanceEnergyShift end 
+    if  isnothing(gamma)                 gammax                = set.gamma                else  gammax                = gamma                end 
+    if  isnothing(lineSelection)         lineSelectionx        = set.lineSelection        else  lineSelectionx        = lineSelection        end 
+    if  isnothing(operator)              operatorx             = set.operator             else  operatorx             = operator             end 
 
     Settings( rydbergShellsx, printBeforex, resonanceEnergyShiftx, gammax, lineSelectionx, operatorx)
 end
@@ -198,7 +198,7 @@ function computeAmplitudesProperties(line::InternalRecombination.Line, nm::Nucle
                                         grid::Radial.Grid, settings::InternalRecombination.Settings; printout::Bool=true) 
     newChannels = InternalRecombination.Channel[];   rateZ = 0.;   rate = 0.;   gHalf = settings.gamma / 2.
     # Define a common subshell list for both multiplets
-    subshellList = Basics.generate("subshells: ordered list for two bases", line.finalLevel.basis, line.initialLevel.basis)
+    subshellList = Basics.generate(OrderedSubshellList(), line.finalLevel.basis, line.initialLevel.basis)
     Defaults.setDefaults("relativistic subshell list", subshellList; printout=false)
     
     for channel in line.channels
@@ -237,7 +237,8 @@ function  computeLines(finalMultiplet::Multiplet, initialMultiplet::Multiplet, n
     # Generate orbitals for all rydberg-subshells
     rydbergSubshells = Basics.generateSubshellList(settings.rydbergShells)
     meanPot          = Basics.computePotential(Basics.DFSField(1.0), grid, initialMultiplet.levels[1].basis)
-    rydbergOrbitals  = Basics.generateOrbitalsForPotential(grid, meanPot, rydbergSubshells)
+    primitives       = Bsplines.generatePrimitives(grid)
+    rydbergOrbitals  = Bsplines.generateOrbitals(rydbergSubshells, meanPot, nm, primitives; printout=true)
     #
     lines = InternalRecombination.determineLines(finalMultiplet, initialMultiplet, settings)
     # Display all selected lines before the computations start
@@ -272,7 +273,6 @@ function determineChannels(finalLevel::Level, initialLevel::Level, settings::Int
     subshells = Basics.generateSubshellList(settings.rydbergShells)
     for  subsh in subshells
         tSymmetries = AngularMomentum.allowedTotalSymmetries(symi, subsh.kappa)
-        ##x @show symi, subsh.kappa, tSymmetries
         for  symt in tSymmetries
             if  symt != symf      continue    end
             push!(channels, InternalRecombination.Channel(subsh, symt, Complex(0.)) )
@@ -295,7 +295,6 @@ function  determineLines(finalMultiplet::Multiplet, initialMultiplet::Multiplet,
         for  fLevel  in  finalMultiplet.levels
             if  Basics.selectLevelPair(iLevel, fLevel, settings.lineSelection)
                 dEnergy = iLevel.energy - fLevel.energy   + settings.resonanceEnergyShift
-                ##x if   energy < 0.01                                                             continue   end
                 channels = InternalRecombination.determineChannels(fLevel, iLevel, settings) 
                 push!( lines, InternalRecombination.Line(iLevel, fLevel, dEnergy, 0., 0., channels) )
             end

@@ -18,8 +18,9 @@ export Model
     + mass     ::Float64         ... atomic mass
     + radius   ::Float64         ... (root-mean square) radius of a uniform or Fermi-distributed nucleus
     + spinI    ::AngularJ64      ... nuclear spin I, must be >= 0
-    + mu       ::Float64         ... magnetic dipole moment in Bohr magnetons
-    + Q        ::Float64         ... electric quadrupole moment
+    + mu       ::Float64         ... magnetic dipole moment [nuclear magnetons]
+    + Q        ::Float64         ... electric quadrupole moment [barn]
+    + Omega    ::Float64         ... magnetic octupole moment [nuclear magnetons x barn]
 """
 struct  Model
     Z          ::Float64
@@ -29,6 +30,7 @@ struct  Model
     spinI      ::AngularJ64      
     mu         ::Float64          
     Q          ::Float64
+    Omega      ::Float64
 end
 
 
@@ -44,8 +46,9 @@ function Model(Z::Real)
     spinI    = AngularJ64(0)
     mu       = 0.
     Q        = 0.
+    Omega    = 0.
 
-    Model(Z, model, mass, radius, spinI, mu, Q) 
+    Model(Z, model, mass, radius, spinI, mu, Q, Omega) 
 end
 
 
@@ -61,8 +64,9 @@ function Model(Z::Real, M::Float64)
     spinI    = AngularJ64(0)
     mu       = 0.
     Q        = 0.
+    Omega    = 0.
 
-    Model(Z, model, mass, radius, spinI, mu, Q) 
+    Model(Z, model, mass, radius, spinI, mu, Q, Omega) 
 end
 
 
@@ -84,8 +88,9 @@ function Model(Z::Real, model::String)
     spinI    = AngularJ64(0)
     mu       = 0.
     Q        = 0.
+    Omega    = 0.
 
-    Model(Z, model, mass, radius, spinI, mu, Q) 
+    Model(Z, model, mass, radius, spinI, mu, Q, Omega) 
 end
 
 
@@ -93,22 +98,23 @@ end
 `Nuclear.Model(nm::Nuclear.Model;`
     
             Z=..,         model=..,         mass=..,        radius=..,     
-            spinI=..,     mu=..,            Q=..)
+            spinI=..,     mu=..,            Q=..,           Omega=..)
     ... constructor for re-defining a nuclear model nm::Nuclear.Model.
 """
 function Model(nm::Nuclear.Model;            Z::Union{Nothing,Float64}=nothing,          model::Union{Nothing,String}=nothing,         
     mass::Union{Nothing,Float64}=nothing,    radius::Union{Nothing,Float64}=nothing,     spinI::Union{Nothing,AngularJ64}=nothing,  
-    mu::Union{Nothing,Float64}=nothing,      Q::Union{Nothing,Float64}=nothing)
+    mu::Union{Nothing,Float64}=nothing,      Q::Union{Nothing,Float64}=nothing,          Omega::Union{Nothing,Float64}=nothing)
 
-    if  Z         == nothing   Zx          = nm.Z           else   Zx          = Z          end 
-    if  model     == nothing   modelx      = nm.model       else   modelx      = model      end 
-    if  mass      == nothing   massx       = nm.mass        else   massx       = mass       end 
-    if  radius    == nothing   radiusx     = nm.radius      else   radiusx     = radius     end 
-    if  spinI     == nothing   spinIx      = nm.spinI       else   spinIx      = spinI      end 
-    if  mu        == nothing   mux         = nm.mu          else   mux         = mu         end 
-    if  Q         == nothing   Qx          = nm.Q           else   Qx          = Q          end 
+    if  isnothing(Z)           Zx          = nm.Z           else   Zx          = Z          end 
+    if  isnothing(model)       modelx      = nm.model       else   modelx      = model      end 
+    if  isnothing(mass)        massx       = nm.mass        else   massx       = mass       end 
+    if  isnothing(radius)      radiusx     = nm.radius      else   radiusx     = radius     end 
+    if  isnothing(spinI)       spinIx      = nm.spinI       else   spinIx      = spinI      end 
+    if  isnothing(mu)          mux         = nm.mu          else   mux         = mu         end 
+    if  isnothing(Q)           Qx          = nm.Q           else   Qx          = Q          end 
+    if  isnothing(Omega)       Omegax      = nm.Omega       else   Omegax      = Omega      end 
     
-    Model(Zx, modelx, massx, radiusx, spinIx, mux, Qx)
+    Model(Zx, modelx, massx, radiusx, spinIx, mux, Qx, Omegax)
 end
 
 
@@ -124,7 +130,7 @@ function Base.show(io::IO, m::Model)
         error("stop a")
     end
 
-    print(io, "nuclear spin I = $(m.spinI), dipole moment mu = $(m.mu) and quadrupole moment Q = $(m.Q).")
+    print(io, "nuclear spin I = $(m.spinI), dipole moment mu = $(m.mu), quadrupole moment Q = $(m.Q) and octupole moment Omega = $(m.Omega).")
 end
 
         
@@ -136,8 +142,9 @@ end
     + spinI         ::AngularJ64   ... nuclear spin I >= 0 of the isomeric nuclear level, could be the ground level.
     + parity        ::Parity       ... parity of the isomeric nuclear level
     + energy        ::Float64      ... nuclear excitation energy of the isomeric level; 0. if nuclear ground level [in user-specified units]
-    + mu            ::Float64      ... magnetic dipole moment in Bohr magnetons
-    + Q             ::Float64      ... electric quadrupole moment
+    + mu            ::Float64      ... magnetic dipole moment [Bohr magnetons].
+    + Q             ::Float64      ... electric quadrupole moment.
+    + Omega         ::Float64      ... magnetic octupole moment [Bohr magnetons x fm^2].
     + multipoleM    ::EmMultipole  ... multipole of the <Ia || M^(multipole) || Ib > nuclear matrix element
     + elementM      ::Float64      ... (real) value of the  <Ia || M^(multipole) || Ib > nuclear matrix element in [a.u.]
 """
@@ -147,6 +154,7 @@ struct  Isomer
     energy          ::Float64 
     mu              ::Float64
     Q               ::Float64
+    Omega           ::Float64
     multipoleM      ::Array{EmMultipole,1}
     elementM        ::Array{Float64,1}  
 end
@@ -156,7 +164,7 @@ end
 `Nuclear.Isomer()`  ... constructor for an `empty` instance of Nuclear.Isomer.
 """
 function Isomer()
-    Isomer( AngularJ64(0), Basics.plus, 0., 0., 0., [E1], Float64[])
+    Isomer( AngularJ64(0), Basics.plus, 0., 0., 0., 0., [E1], Float64[])
 end
 
 
@@ -167,6 +175,7 @@ function Base.show(io::IO, isomer::Nuclear.Isomer)
     println(io, "energy:         $(isomer.energy)  ")
     println(io, "mu:             $(isomer.mu)  ")
     println(io, "Q:              $(isomer.Q)  ")
+    println(io, "Omega:          $(isomer.Omega)  ")
     println(io, "multipoleM:     $(isomer.multipoleM)  ")
     println(io, "elementM:       $(isomer.elementM)  ")
 end
@@ -253,7 +262,6 @@ end
 function fermiDistributedNucleus(Rrms::Float64, Z::Float64, grid::Radial.Grid)
 
     zz = zeros(Float64, grid.NoPoints);   zznew = zeros(Float64, grid.NoPoints);   dx = zeros(Float64, grid.NoPoints)
-    ##x function  rho(r::Float64)  1.0 / (1.0 + exp( (r-fermiC_au)/fermiA_au ) )   end
     function  r_rho(r::Float64)  r / (1.0 + exp( (r-fermiC_au)/fermiA_au ) )   end
     function  rr_rho(r::Float64)  r^2 / (1.0 + exp( (r-fermiC_au)/fermiA_au ) )  end
 
@@ -302,7 +310,6 @@ end
 function uniformNucleus(R::Float64, Z::Float64, grid::Radial.Grid)
 
     zz = zeros(Float64, grid.NoPoints);   R_au = Defaults.convertUnits("length: from fm to atomic", R)
-    ##x println("uniformNucleus()::  R_au = $R_au")
 
     for i = 1:grid.NoPoints
         if     grid.r[i] <= R_au    zz[i] = Z / (2 * R_au) * (3. - grid.r[i]^2/R_au^2) * grid.r[i]

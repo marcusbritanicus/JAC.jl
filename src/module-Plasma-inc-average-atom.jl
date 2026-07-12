@@ -170,7 +170,6 @@ function displayElectronNumberDensity(grid::Radial.Grid, orbitals::Dict{Subshell
     println("\n Radial electron number density: \n" *
             "\n     r [a_o]       total n_e     n_e  (eps < 0.)   n_e  (eps > 0.)        " *
             "\n -------------------------------------------------------------------------")
-    ##x @show length(grid.r), length(totalNe), length(posNe), length(negNe)
     for  (ir, r)  in  enumerate(grid.r)
         if  r < 0.1         continue    end
         if  rem(ir ,5) != 1 continue    end
@@ -200,7 +199,6 @@ function finiteNorm(a::Radial.Orbital, radiusWS::Float64, grid::Radial.Grid)
             if  grid.r[i] > radiusWS    break   end
             wa = wa + (a.P[i]^2 + a.Q[i]^2) * grid.wr[i]   
         end
-        ##x @show "finite norm", wa
         return( wa )
     else
         error("stop a")
@@ -229,7 +227,7 @@ function  perform(scheme::Plasma.AverageAtomScheme, computation::Plasma.Computat
     subshells = Basics.generateSubshellList(shells)
     println(">> Subshells included into the average-atom scheme: \n   $subshells")
     # Generate hydrogenic orbitals for all subshells and display comparison
-    orbitals  = Bsplines.generateOrbitalsHydrogenic(wa, nm, subshells; printout=false)
+    orbitals  = Bsplines.generateOrbitalsHydrogenic(subshells, nm, wa; printout=false)
     chemMu    = Plasma.determineChemicalPotential(orbitals, temp, RWS, nm, computation.grid)
     Basics.displayOrbitalProperties(stdout, orbitals, chemMu, temp, RWS, nm, computation.grid)
     # Solve the orbitals and chemical potential self-consistently in the average-atom model

@@ -48,7 +48,6 @@ end
 """
 function amplitude(K::Integer, level::Level, grid::Radial.Grid; display::Bool=false)
 
-    ##x printstyled("Compute multipole moment for level $(level.index) ...", color=:light_green)
 
     radialParts = Dict()
     angularParts = Dict()
@@ -64,7 +63,7 @@ function amplitude(K::Integer, level::Level, grid::Radial.Grid; display::Bool=fa
         end
 
         if Defaults.saRatip()
-            spinAngularCoeffs = Basics.compute("angular coefficients: 1-p, Grasp92", 0, K, level.basis.csfs[i], level.basis.csfs[j]) 
+            spinAngularCoeffs = Basics.compute(AngularCoeffs1pGrasp92(), 0, K, level.basis.csfs[i], level.basis.csfs[j]) 
         end
         if Defaults.saGG()
             operator = SpinAngular.OneParticleOperator(K, plus, true)
@@ -73,7 +72,6 @@ function amplitude(K::Integer, level::Level, grid::Radial.Grid; display::Bool=fa
 
         csfME = 0.0
         for coeff in spinAngularCoeffs
-            ##x @show radialParts[coeff.a, coeff.b], angularParts[coeff.a, coeff.b]
             csfME += coeff.T * radialParts[coeff.a, coeff.b] * angularParts[coeff.a, coeff.b]
         end
 
@@ -84,7 +82,6 @@ function amplitude(K::Integer, level::Level, grid::Radial.Grid; display::Bool=fa
     wigner3jvalue = AngularMomentum.Wigner_3j(j, K, j, j, 0, -j)
     moment = moment * (-1)^(2*j - K + 1) * wigner3jvalue * sqrt(2*j+1)
 
-    ##x printstyled("done. \n", color=:light_green)
 
     if display
         sa = @sprintf("%.5e", moment)
@@ -113,10 +110,9 @@ function dipoleAmplitude(finalLevel::Level, initialLevel::Level, grid::Radial.Gr
         #
         for  r = 1:nf
             for  s = 1:ni
-                ##x wa = Basics.compute("angular coefficients: 1-p, Grasp92", 0, 1, finalLevel.basis.csfs[r], initialLevel.basis.csfs[s])
                 # Calculate the spin-angular coefficients
                 if  Defaults.saRatip()
-                    waR = Basics.compute("angular coefficients: 1-p, Grasp92", 0, 1, finalLevel.basis.csfs[r], initialLevel.basis.csfs[s])
+                    waR = Basics.compute(AngularCoeffs1pGrasp92(), 0, 1, finalLevel.basis.csfs[r], initialLevel.basis.csfs[s])
                     wa  = waR       
                 end
                 if  Defaults.saGG()
@@ -223,10 +219,8 @@ function transitionAmplitude(mp::EmMultipole, gauge::EmGauge, omega::Float64, fi
     #
     for  r = 1:nf
         for  s = 1:ni
-            wa = compute("angular coefficients: 1-p, Grasp92", 0, mp.L, finalLevel.basis.csfs[r], initialLevel.basis.csfs[s])
+            wa = compute(AngularCoeffs1pGrasp92(), 0, mp.L, finalLevel.basis.csfs[r], initialLevel.basis.csfs[s])
             for  coeff in wa
-                ##x ja = Basics.subshell_2j(finalLevel.basis.orbitals[coeff.a].subshell)
-                ##x jb = Basics.subshell_2j(initialLevel.basis.orbitals[coeff.b].subshell)
                 tamp  = InteractionStrength.multipoleTransition(mp, gauge, omega, finalLevel.basis.orbitals[coeff.a], 
                                                                     initialLevel.basis.orbitals[coeff.b], grid)
                 matrix[r,s] = matrix[r,s] + coeff.T * tamp  

@@ -74,7 +74,6 @@ GBL_FRAMEWORK                = "relativistic"
 GBL_CONT_POTENTIAL           = Basics.DFSField(0.42)
 GBL_CONT_SOLUTION            = BsplineGalerkin()         ###  ContBessel(), ContSine(), AsymptoticCoulomb(), NonrelativisticCoulomb(), BsplineGalerkin()
 GBL_CONT_NORMALIZATION       = AlokNorm()                ###  PureSineNorm(), CoulombSineNorm(), OngRussekNorm(), AlokNorm()
-##x GBL_CONT_NORMALIZATION       = PureSineNorm()            ###  PureSineNorm(), CoulombSineNorm(), OngRussekNorm()
 GBL_QED_HYDROGENIC_LAMBDAC   = [1.0,  1.0,  1.0,  1.0,  1.0]
 GBL_QED_NUCLEAR_CHARGE       = 0.1
 GBL_WARNINGS                 = String[]
@@ -155,8 +154,11 @@ GBL_Storage_XL_Breit        = Dict{String, Float64}()
                                                 a Float64 is returned.
 
 + `("length: from fm to atomic", value::Float64)`  ... to convert a length value (in fm) into a.u.;  a Float64 is returned.
-+ `("length: from atomic to fm", value::Float64)`  or  `("energy: from atomic to Kayser", value::Float64)`  
++ `("length: from atomic to fm", value::Float64)`  or  `("length: from atomic to cm", value::Float64)`  
     ... to convert a length value (in Bohr's a.u.) to the speficied length unit;  a Float64 is returned.
+
++ `("moment: from nuclear magneton to atomic", value::Float64)`  ... to convert a value in mu_nuc into a.u.;  a Float64 is returned.
++ `("moment: from nuclear magneton x fm^2 to atomic", value::Float64)`  ... to convert a value in [mu_nuc x fm^2] into a.u.;  a Float64 is returned.
 
 + `("rate: from atomic to predefined unit", value::Float64)`  or  ("rate: from atomic", value::Float64)  ... to convert a rate value 
                                             from atomic to the predefined rate unit; a Float64 is returned.
@@ -262,6 +264,21 @@ function convertUnits(sa::String, wa::Float64)
     elseif   sa in ["intensity: from W/cm^2 to atomic"]                 return( wa / CONVERT_INTENSITY_AU_TO_W_CM2 )
     elseif   sa in ["intensity: from atomic to W/cm^2"]                 return( wa * CONVERT_INTENSITY_AU_TO_W_CM2 )
 
+    elseif  sa in ["kinetic energy to wave number: atomic units"]
+        c = INVERSE_FINE_STRUCTURE_CONSTANT
+        wb = sqrt( wa*wa/(c*c) + 2wa );                                 return( wb )
+
+    elseif  sa in ["kinetic energy to wavelength: atomic units"]
+        c = INVERSE_FINE_STRUCTURE_CONSTANT
+        wb = sqrt( wa*wa/(c*c) + 2wa );                                 return( 2pi / wb )
+
+    elseif  sa in ["length: from fm to atomic"]                         return (wa / CONVERT_LENGTH_AU_TO_FEMTOMETER )
+    elseif  sa in ["length: from atomic to fm"]                         return (wa * CONVERT_LENGTH_AU_TO_FEMTOMETER )
+    elseif  sa in ["length: from atomic to cm"]                         return (wa * CONVERT_LENGTH_AU_TO_FEMTOMETER * 1.0e-13 )
+
+    elseif  sa in ["moment: from nuclear magneton to atomic"]           return (wa * 5.446170e-4 / 2. )
+    elseif  sa in ["moment: from nuclear magneton x fm^2 to atomic"]    return (wa * 1.944690e-13 / 2. )
+
     elseif    sa in ["rate: from atomic to predefined unit", "rate: from atomic"]
         if       Defaults.getDefaults("unit: rate") == "1/s"            return( wa * CONVERT_RATE_AU_TO_PER_SEC )
         elseif   Defaults.getDefaults("unit: rate") == "a.u."           return( wa )
@@ -305,18 +322,6 @@ function convertUnits(sa::String, wa::Float64)
     
     elseif   sa in ["temperature: from Kelvin to (Hartree) units"]      return( wa / 315774.64 )
     elseif   sa in ["temperature: from atomic to Kelvin"]               return( wa * 315774.64 )
-
-    elseif  sa in ["length: from fm to atomic"]                         return (wa / CONVERT_LENGTH_AU_TO_FEMTOMETER )
-    elseif  sa in ["length: from atomic to fm"]                         return (wa * CONVERT_LENGTH_AU_TO_FEMTOMETER )
-    elseif  sa in ["length: from atomic to cm"]                         return (wa * CONVERT_LENGTH_AU_TO_FEMTOMETER * 1.0e-13 )
-
-    elseif  sa in ["kinetic energy to wave number: atomic units"]
-        c = INVERSE_FINE_STRUCTURE_CONSTANT
-        wb = sqrt( wa*wa/(c*c) + 2wa );                                 return( wb )
-
-    elseif  sa in ["kinetic energy to wavelength: atomic units"]
-        c = INVERSE_FINE_STRUCTURE_CONSTANT
-        wb = sqrt( wa*wa/(c*c) + 2wa );                                 return( 2pi / wb )
 
     elseif  sa in ["wave number to total electron energy: atomic units"]
         c = INVERSE_FINE_STRUCTURE_CONSTANT
@@ -411,9 +416,6 @@ end
 
 
 function setDefaults(sa::String, sb::String)
-    ## global GBL_ENERGY_UNIT, GBL_CROSS_SECTION_UNIT, GBL_RATE_UNIT, GBL_TIME_UNIT, GBL_SUMMARY_IOSTREAM, GBL_PRINT_SUMMARY, 
-    ##    GBL_TEST_IOSTREAM, GBL_PRINT_TEST 
-
     if        sa == "unit: energy"
         units = ["eV", "Kayser", "Hartree", "Hz", "A"]
         !(sb in units)    &&    error("Currently supported energy units: $(units)")
@@ -653,7 +655,6 @@ end
 """
 function getDefaults(sa::String, n_max::Int64)
 
-    ## !(1 <= n_max < 20)    &&    error("Unsupported value of n_max = $n_max")
     !(1 <= n_max < 12)    &&    error("Unsupported value of n_max = $n_max")
 
     if        sa == "ordered shell list: non-relativistic"
@@ -704,8 +705,6 @@ function warn(wa::AbstractWarning)
         close(iostream)
         #
     elseif    wa == ResetWarnings()
-        ## @warn("Reset global array GBL_WARNINGS.")
-        ## printstyled("Constants.warn():  Reset global array GBL_WARNINGS.", color=:light_magenta)
         GBL_WARNINGS = String[]
     else      error("Unsupported Warnings:: $wa")
     end

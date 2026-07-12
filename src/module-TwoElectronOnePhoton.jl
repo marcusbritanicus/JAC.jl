@@ -56,13 +56,13 @@ function Settings(set::TwoElectronOnePhoton.Settings;
     photonEnergyShift::Union{Nothing,Float64}=nothing,          eeInteraction::Union{Nothing,AbstractEeInteraction}=nothing,
     gMultiplet::Union{Nothing,Multiplet}=nothing)
     
-    if  multipoles          == nothing   multipolesx          = set.multipoles          else  multipolesx          = multipoles         end 
-    if  gauges              == nothing   gaugesx              = set.gauges              else  gaugesx              = gauges             end 
-    if  printBefore         == nothing   printBeforex         = set.printBefore         else  printBeforex         = printBefore        end 
-    if  lineSelection       == nothing   lineSelectionx       = set.lineSelection       else  lineSelectionx       = lineSelection      end 
-    if  photonEnergyShift   == nothing   photonEnergyShiftx   = set.photonEnergyShift   else  photonEnergyShiftx   = photonEnergyShift  end 
-    if  eeInteraction       == nothing   eeInteractionx       = set.eeInteraction       else  eeInteractionx       = eeInteraction      end 
-    if  gMultiplet          == nothing   gMultipletx          = set.gMultiplet          else  gMultipletx          = gMultiplet         end 
+    if  isnothing(multipoles)            multipolesx          = set.multipoles          else  multipolesx          = multipoles         end 
+    if  isnothing(gauges)                gaugesx              = set.gauges              else  gaugesx              = gauges             end 
+    if  isnothing(printBefore)           printBeforex         = set.printBefore         else  printBeforex         = printBefore        end 
+    if  isnothing(lineSelection)         lineSelectionx       = set.lineSelection       else  lineSelectionx       = lineSelection      end 
+    if  isnothing(photonEnergyShift)     photonEnergyShiftx   = set.photonEnergyShift   else  photonEnergyShiftx   = photonEnergyShift  end 
+    if  isnothing(eeInteraction)         eeInteractionx       = set.eeInteraction       else  eeInteractionx       = eeInteraction      end 
+    if  isnothing(gMultiplet)            gMultipletx          = set.gMultiplet          else  gMultipletx          = gMultiplet         end 
         
     Settings( multipolesx, gaugesx, printBeforex, lineSelectionx, photonEnergyShiftx, eeInteractionx, gMultipletx)
 end
@@ -145,17 +145,17 @@ end
 
 
 """
-`TwoElectronOnePhoton.amplitude(Mp::EmMultipole, gauge::EmGauge, omega::Float64, finalLevel::Level, initialLevel::Level, 
-                                gMultiplet::Multiplet, grid::Radial.Grid; display::Bool=false, printout::Bool=false)`  
-    ... to compute the TEOP emission amplitude  
-    
-                <alpha_f J_f || O^(Mp, emission) || alpha_n J_i> <alpha_n J_i || V^(e-e) || alpha_i J_i>  
-            +   <alpha_f J_f || V^(e-e) || alpha_n J_f> <alpha_n J_f || O^(Mp, emission) || alpha_i J_i> 
-            
-        emission amplitude for the interaction with the photon field of multipolarity Mp and for the given transition energy 
+`TwoElectronOnePhoton.amplitude(::Emission, Mp::EmMultipole, gauge::EmGauge, omega::Float64, finalLevel::Level, initialLevel::Level,
+                                gMultiplet::Multiplet, grid::Radial.Grid; display::Bool=false, printout::Bool=false)`
+    ... to compute the TEOP emission amplitude
+
+                <alpha_f J_f || O^(Mp, emission) || alpha_n J_i> <alpha_n J_i || V^(e-e) || alpha_i J_i>
+            +   <alpha_f J_f || V^(e-e) || alpha_n J_f> <alpha_n J_f || O^(Mp, emission) || alpha_i J_i>
+
+        emission amplitude for the interaction with the photon field of multipolarity Mp and for the given transition energy
         and gauge. A value::ComplexF64 is returned. The amplitude value is printed to screen if display=true.
 """
-function amplitude(kind::String, Mp::EmMultipole, gauge::EmGauge, omega::Float64, finalLevel::Level, initialLevel::Level, 
+function amplitude(::Emission, Mp::EmMultipole, gauge::EmGauge, omega::Float64, finalLevel::Level, initialLevel::Level,
                     gMultiplet::Multiplet, grid::Radial.Grid; display::Bool=false, printout::Bool=false)
     #
     # Always ensure the same subshell list for all initial, intermediate and final levels
@@ -205,7 +205,7 @@ function amplitude(kind::String, Mp::EmMultipole, gauge::EmGauge, omega::Float64
     
     if  display  
         println("    < level=$(finalLevel.index) [J=$(finalLevel.J)$(string(finalLevel.parity))] ||" *
-                " TEOP^($Mp, $kind) ($omega a.u., $gauge) ||" *
+                " TEOP^($Mp, emission) ($omega a.u., $gauge) ||" *
                 " $(initialLevel.index) [$(initialLevel.J)$(string(initialLevel.parity))] >  = $amplitude  ")
     end
     
@@ -224,7 +224,7 @@ function  computeAmplitudesProperties(line::TwoElectronOnePhoton.Line, grid::Rad
     newChannels = TwoElectronOnePhoton.Channel[];    rateC = 0.;    rateB = 0.
     for channel in line.channels
         #
-        amplitude = TwoElectronOnePhoton.amplitude("emission", channel.multipole, channel.gauge, line.omega, 
+        amplitude = TwoElectronOnePhoton.amplitude(Emission(), channel.multipole, channel.gauge, line.omega,
                                                     line.finalLevel, line.initialLevel, settings.gMultiplet, grid, printout=printout)
         #
         push!( newChannels, TwoElectronOnePhoton.Channel( channel.multipole, channel.gauge, amplitude) )
@@ -252,7 +252,7 @@ end
 function  computeLines(finalMultiplet::Multiplet, initialMultiplet::Multiplet, nm::Nuclear.Model, grid::Radial.Grid, 
                         settings::TwoElectronOnePhoton.Settings; output=true) 
     # Define a common subshell list for both multiplets
-    subshellList = Basics.generate("subshells: ordered list for two bases", finalMultiplet.levels[1].basis, initialMultiplet.levels[1].basis)
+    subshellList = Basics.generate(OrderedSubshellList(), finalMultiplet.levels[1].basis, initialMultiplet.levels[1].basis)
     Defaults.setDefaults("relativistic subshell list", subshellList; printout=true)
     #
     println("")
@@ -426,7 +426,6 @@ function  displayLifetimes(stream::IO, lines::Array{TwoElectronOnePhoton.Line,1}
         sa = sa * "Coulomb          " * @sprintf("%.6e",              1.0/irates[ii].Coulomb)     * "  "
         sa = sa * @sprintf("%.6e", Defaults.convertUnits("time: from atomic",   1.0/irates[ii].Coulomb) )   * "    "
         sa = sa * @sprintf("%.6e", Defaults.convertUnits("energy: from atomic",     irates[ii].Coulomb) )
-        ##x @show 1.0/Defaults.convertUnits("rate: from atomic",  irates[ii].Coulomb), irates[ii].Coulomb
         println(stream, sa)
         sa = repeat(" ", length(istr[ii]) )
         sa = sa * "Babushkin        " * @sprintf("%.6e",              1.0/irates[ii].Babushkin)   * "  "
@@ -477,12 +476,12 @@ function  displayRates(stream::IO, lines::Array{TwoElectronOnePhoton.Line,1}, se
             sa = sa * TableStrings.center(9,  string(ch.multipole); na=4)
             sa = sa * TableStrings.flushleft(11, string(ch.gauge);  na=2)
             chRate =  8pi * Defaults.getDefaults("alpha") * line.omega / (Basics.twice(line.initialLevel.J) + 1) * (abs(ch.amplitude)^2) 
-            sa = sa * @sprintf("%.6e", Basics.recast("rate: radiative, to Einstein A",    line, chRate)) * "  "
-            sa = sa * @sprintf("%.6e", Basics.recast("rate: radiative, to Einstein B",    line, chRate)) * "    "
-            sa = sa * @sprintf("%.6e", Basics.recast("rate: radiative, to g_f",           line, chRate)) * "    "
-            sa = sa * @sprintf("%.6e", Basics.recast("rate: radiative, to decay width",   line, chRate)) * "    "
+            sa = sa * @sprintf("%.6e", Basics.recast(RecastRateToEinsteinA(),    line, chRate)) * "  "
+            sa = sa * @sprintf("%.6e", Basics.recast(RecastRateToEinsteinB(),    line, chRate)) * "    "
+            sa = sa * @sprintf("%.6e", Basics.recast(RecastRateToOscillatorGf(),           line, chRate)) * "    "
+            sa = sa * @sprintf("%.6e", Basics.recast(RecastRateToDecayWidth(),   line, chRate)) * "    "
             if  ch.multipole == E1
-                    sa = sa * @sprintf("%.6e", Basics.recast("rate: radiative, to S",     line, chRate)) * "    "
+                    sa = sa * @sprintf("%.6e", Basics.recast(RecastRateToLineStrengthS(),     line, chRate)) * "    "
             else    sa = sa * "  --  " 
             end
             println(stream, sa)

@@ -11,7 +11,7 @@
 module PhotoDoubleIonization
 
 
-using Printf, ..AngularMomentum, ..Basics, ..Continuum, ..Defaults, ..Radial, ..Nuclear, ..ManyElectron, ..PhotoEmission, 
+using Printf, ..AngularMomentum, ..Basics, ..Bsplines, ..Continuum, ..Defaults, ..Radial, ..Nuclear, ..ManyElectron, ..PhotoEmission,
                 ..TableStrings
 
 """
@@ -73,17 +73,17 @@ function Settings(set::PhotoDoubleIonization.Settings;
     printBefore::Union{Nothing,Bool}=nothing,                               lineSelection::Union{Nothing,LineSelection}=nothing, 
     eeInteraction::Union{Nothing,AbstractEeInteraction}=nothing,            gMultiplet::Union{Nothing,Multiplet}=nothing)  
     
-    if  multipoles         == nothing   multipolesx         = set.multipoles         else  multipolesx         = multipoles          end 
-    if  gauges             == nothing   gaugesx             = set.gauges             else  gaugesx             = gauges              end 
-    if  quasiShells        == nothing   quasiShellsx        = set.quasiShells        else  quasiShellsx        = quasiShells         end 
-    if  photonEnergies     == nothing   photonEnergiesx     = set.photonEnergies     else  photonEnergiesx     = photonEnergies      end 
-    if  NoEnergySharings   == nothing   NoEnergySharingsx   = set.electronEnergies   else  NoEnergySharingsx   = NoEnergySharings    end 
-    if  maxKappa           == nothing   maxKappax           = set.maxKappa           else  maxKappasx          = maxKappa            end 
-    if  calcDifferentialCs == nothing   calcDifferentialCsx = set.calcDifferentialCs else  calcDifferentialCsx = calcDifferentialCs  end 
-    if  printBefore        == nothing   printBeforex        = set.printBefore        else  printBeforex        = printBefore         end 
-    if  lineSelection      == nothing   lineSelectionx      = set.lineSelection      else  lineSelectionx      = lineSelection       end 
-    if  eeInteraction      == nothing   eeInteractionx      = set.eeInteraction      else  eeInteractionx      = eeInteraction       end 
-    if  gMultiplet         == nothing   gMultipletx         = set.gMultiplet         else  gMultipletx         = gMultiplet          end 
+    if  isnothing(multipoles)           multipolesx         = set.multipoles         else  multipolesx         = multipoles          end 
+    if  isnothing(gauges)               gaugesx             = set.gauges             else  gaugesx             = gauges              end 
+    if  isnothing(quasiShells)          quasiShellsx        = set.quasiShells        else  quasiShellsx        = quasiShells         end 
+    if  isnothing(photonEnergies)       photonEnergiesx     = set.photonEnergies     else  photonEnergiesx     = photonEnergies      end 
+    if  isnothing(NoEnergySharings)     NoEnergySharingsx   = set.electronEnergies   else  NoEnergySharingsx   = NoEnergySharings    end 
+    if  isnothing(maxKappa)             maxKappax           = set.maxKappa           else  maxKappasx          = maxKappa            end 
+    if  isnothing(calcDifferentialCs)   calcDifferentialCsx = set.calcDifferentialCs else  calcDifferentialCsx = calcDifferentialCs  end 
+    if  isnothing(printBefore)          printBeforex        = set.printBefore        else  printBeforex        = printBefore         end 
+    if  isnothing(lineSelection)        lineSelectionx      = set.lineSelection      else  lineSelectionx      = lineSelection       end 
+    if  isnothing(eeInteraction)        eeInteractionx      = set.eeInteraction      else  eeInteractionx      = eeInteraction       end 
+    if  isnothing(gMultiplet)           gMultipletx         = set.gMultiplet         else  gMultipletx         = gMultiplet          end 
 
     Settings( multipolesx, gaugesx, quasiShellsx, photonEnergiesx, NoEnergySharingsx, maxKappax, calcDifferentialCsx, 
                 printBeforex, lineSelectionx, eeInteractionx, gMultipletx)
@@ -221,17 +221,17 @@ end
 
 
 """
-`PhotoDoubleIonization.amplitude(kind::String, Mp::EmMultipole, gauge::EmGauge, omega::Float64, finalLevel::Level, initialLevel::Level, 
-                                    gMultiplet::Multiplet, grid::Radial.Grid; display::Bool=false, printout::Bool=false)`  
-    ... to compute the photo-double ionization amplitude  
-    
-                <alpha_f J_f || O^(Mp, absorption) || alpha_n J_i> <alpha_n J_i || V^(e-e) || alpha_i J_i>  
-            +   <alpha_f J_f || V^(e-e) || alpha_n J_f> <alpha_n J_f || O^(Mp, absorption) || alpha_i J_i> 
-            
-        absorption amplitude for the interaction with the photon field of frequency omega, multipolarity Mp and gauge. 
+`PhotoDoubleIonization.amplitude(::Absorption, Mp::EmMultipole, gauge::EmGauge, omega::Float64, finalLevel::Level, initialLevel::Level,
+                                    gMultiplet::Multiplet, grid::Radial.Grid; display::Bool=false, printout::Bool=false)`
+    ... to compute the photo-double ionization amplitude
+
+                <alpha_f J_f || O^(Mp, absorption) || alpha_n J_i> <alpha_n J_i || V^(e-e) || alpha_i J_i>
+            +   <alpha_f J_f || V^(e-e) || alpha_n J_f> <alpha_n J_f || O^(Mp, absorption) || alpha_i J_i>
+
+        absorption amplitude for the interaction with the photon field of frequency omega, multipolarity Mp and gauge.
         A value::ComplexF64 is returned. The amplitude value is printed to screen if display=true.
 """
-function amplitude(kind::String, Mp::EmMultipole, gauge::EmGauge, omega::Float64, finalLevel::Level, initialLevel::Level, 
+function amplitude(::Absorption, Mp::EmMultipole, gauge::EmGauge, omega::Float64, finalLevel::Level, initialLevel::Level,
                     gMultiplet::Multiplet, grid::Radial.Grid; display::Bool=false, printout::Bool=false)
     #
     # Always ensure the same subshell list for all initial, intermediate and final levels
@@ -282,7 +282,7 @@ function amplitude(kind::String, Mp::EmMultipole, gauge::EmGauge, omega::Float64
     
     if  display  
         println("    < level=$(finalLevel.index) [J=$(finalLevel.J)$(string(finalLevel.parity))] ||" *
-                " PhotoDouble^($Mp, $kind) ($omega a.u., $gauge) ||" *
+                " PhotoDouble^($Mp, absorption) ($omega a.u., $gauge) ||" *
                 " $(initialLevel.index) [$(initialLevel.J)$(string(initialLevel.parity))] >  = $amplitude  ")
     end
     
@@ -314,7 +314,7 @@ function  computeAmplitudesProperties(line::PhotoDoubleIonization.Line, nm::Nucl
             newcLevel  = Basics.generateLevelWithExtraElectron(cOrbital, channel.tSymmetry, newfLevel)
             newChannel = PhotoDoubleIonization.Channel(channel.multipole, channel.gauge, channel.quasiSubshell, channel.xSymmetry,
                                                         channel.kappa, channel.tSymmetry, phase, 0.)
-            amplitude  = PhotoDoubleIonization.amplitude("absorption", channel.multipole, channel.gauge, sharing.omega, newcLevel,
+            amplitude  = PhotoDoubleIonization.amplitude(Absorption(), channel.multipole, channel.gauge, sharing.omega, newcLevel,
                                                             newiLevel, settings.gMultiplet, grid, display=true, printout=true)           
             push!( newChannels, PhotoIonization.Channel(newChannel.multipole, newChannel.gauge, newChannel.quasiSubshell, newChannel.xSymmetry, 
                                                         newChannel.kappa, newChannel.tSymmetry, newChannel.phase, amplitude) )
@@ -354,7 +354,8 @@ function  computeLines(finalMultiplet::Multiplet, initialMultiplet::Multiplet, n
     # Generate orbitals for all quasi-subshells
     quasiSubshells = Basics.generateSubshellList(settings.quasiShells)
     meanPot        = Basics.computePotentialDFS(grid, finalMultiplet.levels[1].basis)
-    quasiOrbitals  = Basics.generateOrbitalsForPotential(grid, meanPot, quasiSubshells)
+    primitives     = Bsplines.generatePrimitives(grid)
+    quasiOrbitals  = Bsplines.generateOrbitals(quasiSubshells, meanPot, nm, primitives; printout=true)
     #
     lines = PhotoDoubleIonization.determineLines(finalMultiplet, initialMultiplet, settings)
     # Display all selected lines before the computations start

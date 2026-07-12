@@ -91,10 +91,7 @@ function generateBlocks(scheme::Cascade.ImpactExcitationScheme, comp::Cascade.Co
         for  confa  in confs
             print("  Multiplet computations for $(string(confa)[1:end])   with $(confa.NoElectrons) electrons ... ")
             if  printSummary   println(iostream, "\n*  Multiplet computations for $(string(confa)[1:end])   with $(confa.NoElectrons) electrons ... ")   end
-            ##x basis     = Basics.performSCF([confa], comp.nuclearModel, comp.grid, comp.asfSettings; printout=false)
             basis     = SelfConsistent.performSCF([confa], comp.nuclearModel, comp.grid, comp.asfSettings; printout=false)
-            ##x multiplet = Basics.perform("computation: mutiplet from orbitals, no CI, CSF diagonal", [confa],  basis.orbitals, 
-            ##x                            comp.nuclearModel, comp.grid, comp.asfSettings; printout=false)
             multiplet = Hamiltonian.performCIwithFrozenOrbitals([confa],  basis.orbitals, comp.nuclearModel, comp.grid, comp.asfSettings; printout=false)
             push!( blockList, Cascade.Block(confa.NoElectrons, [confa], true, multiplet) )
             println("and $(length(multiplet.levels[1].basis.csfs)) CSF done. ")
@@ -122,7 +119,7 @@ function generateConfigurationsForImpactExcitation(multiplets::Array{Multiplet,1
     end
     blockConfList = Basics.generateConfigurations(initialConfList, scheme.fromShells, scheme.toShells, 1)
     # Exclude configurations with too low or too high mean energies 
-    en     = Float64[];   for conf in initialConfList    push!(en, -Semiempirical.estimate("binding energy", round(Int64, nm.Z), conf))   end
+    en     = Float64[];   for conf in initialConfList    push!(en, -Semiempirical.estimate(EstimateBindingEnergyWilliams2000(), round(Int64, nm.Z), conf))   end
     maxen  = maximum(en);    minen  = minimum(en);  
     println(">>> initial configuration(s) have energies from $minen  to  $maxen  [a.u.].")
     #
@@ -134,7 +131,7 @@ function generateConfigurationsForImpactExcitation(multiplets::Array{Multiplet,1
     @show maxen
     #
     newBlockConfList = Configuration[]
-    for  conf  in  blockConfList    meanEnergy = -Semiempirical.estimate("binding energy", round(Int64, nm.Z), conf)
+    for  conf  in  blockConfList    meanEnergy = -Semiempirical.estimate(EstimateBindingEnergyWilliams2000(), round(Int64, nm.Z), conf)
         if  meanEnergy <= maxen     push!(newBlockConfList, conf) 
         else    println(">>> exclude $conf with energy $meanEnergy [a.u.] because of energy reasons; maximum total energy = $maxen ")
         end
@@ -161,8 +158,6 @@ function perform(scheme::ImpactExcitationScheme, comp::Cascade.Computation; outp
     #
     # Perform the SCF and CI computation for the intial-state multiplets if initial configurations are given
     if  comp.initialConfigs != Configuration[]
-        ##x basis      = Basics.performSCF(comp.initialConfigs, comp.nuclearModel, comp.grid, comp.asfSettings; printout=false)
-        ##x multiplet  = Basics.performCI(basis, comp.nuclearModel, comp.grid, comp.asfSettings; printout=false)
         multiplet  = SelfConsistent.performSCF(comp.initialConfigs, comp.nuclearModel, comp.grid, comp.asfSettings; printout=false)
         multiplets = [Multiplet("initial states", multiplet.levels)]
     else
@@ -174,8 +169,6 @@ function perform(scheme::ImpactExcitationScheme, comp::Cascade.Computation; outp
     #
     # Generate subsequent cascade configurations as well as display and group them together
     wa  = Cascade.generateConfigurationsForImpactExcitation(multiplets, comp.scheme, comp.nuclearModel)
-    ##x wb1 = Cascade.groupDisplayConfigurationList(comp.nuclearModel.Z, wa[1], sa="(initial part of the) impact-excited ")
-    ##x wb2 = Cascade.groupDisplayConfigurationList(comp.nuclearModel.Z, wa[2], sa="(generated part of the) impact-excited ")
     wb1 = Basics.displayConfigurations(comp.nuclearModel.Z, wa[1], sa="(initial part of the) impact-excited ")
     wb2 = Basics.displayConfigurations(comp.nuclearModel.Z, wa[2], sa="(generated part of the) impact-excited ")
     #

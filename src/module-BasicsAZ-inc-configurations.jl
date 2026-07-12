@@ -1,6 +1,4 @@
 
-##x export  checkConfigurations,  displayConfiguration,  displayConfigurations,  extractConfiguration,  extractConfigurations,  
-##x         extractFromConfiguration,  extractFromConfigurations,  generateConfiguration,  generateConfigurations
 
 
 """
@@ -140,22 +138,22 @@ function  Basics.displayConfiguration(stream::IO, theme::Basics.FineStructureLS,
 end
 
 """
-`Basics.displayConfiguration(stream::IO, theme::Basics.HyperfineStructure, spinI::AngularJ64, config::Configuration; 
+`Basics.displayConfiguration(stream::IO, theme::Basics.HyperfineStructure, config::Configuration; 
                              details::String="", header::Bool=true)`  
     ... displays the given configuration along with its hyperfine-structure, i.e. the total F's and their number of 
         levels for the nuclear spin I. Nothing is returned in this case.
 """
-function  Basics.displayConfiguration(stream::IO, theme::Basics.HyperfineStructure, spinI::AngularJ64, config::Configuration; 
+function  Basics.displayConfiguration(stream::IO, theme::Basics.HyperfineStructure, config::Configuration; 
                                       details::String="", header::Bool=true)
     if  header
-        if  details == ""   println(stream,"  Hyperfine-structure of configuration for nuclear spin $spinI:")
-        else                println(stream,"  Hyperfine-structure of configuration for nuclear spin $spinI and $details:") 
+        if  details == ""   println(stream,"  Hyperfine-structure of configuration for nuclear spin $theme.spinI:")
+        else                println(stream,"  Hyperfine-structure of configuration for nuclear spin $theme.spinI and $details:") 
         end
     end
     
     totalJs = Basics.extractFromConfiguration(TotalAM(true, AngularJ64[]), config)
     tJs     = unique(totalJs);   tJs = sort(tJs)
-    totalFs = AngularJ64[];      for totalJ in totalJs    append!(totalFs, Basics.oplus(spinI, totalJ) )   end
+    totalFs = AngularJ64[];      for totalJ in totalJs    append!(totalFs, Basics.oplus(theme.spinI, totalJ) )   end
     tFs     = unique(totalFs);   tFs = sort(tFs)
 
     counts  = Dict{AngularJ64, Int}()
@@ -582,7 +580,6 @@ end
         A nonrelativistic conf::Configuration is returned.
 """
 function Basics.extractConfiguration(theme::Basics.NonrelativisticBasis, csfNR::LSjj.CsfNR, basisNR::LSjj.BasisNR)
-    ##x  Replace in code: LSjj.extractConfigurationFromCsfNR(csfNR::LSjj.CsfNR, basisNR::LSjj.BasisNR)
     
     shells = Dict{Shell,Int64}()
     for  s = 1:length(basisNR.shells)
@@ -604,7 +601,6 @@ end
         newConfs::Array{Configuration,1} is returned. 
 """
 function Basics.extractConfigurations(theme::Basics.ByNumber, confs::Array{Configuration,1})
-    ##x Replace in code:  Basics.excludeConfigurations
     newConfs = Configuration[]
     for  conf in confs   if conf.NoElectrons in theme.NoElectrons    push!(newConfs, conf)   end   end
     
@@ -982,7 +978,6 @@ end
         is returned. This method still need to be combined with the module LSjj.
 """
 function Basics.extractFromConfiguration(theme::Basics.OpenShellNumber, conf::Configuration)
-    ##x Replace in code: Basics.extractNoOpenShells(conf::Configuration)
     ns = 0
     for  (shell, occ)  in conf.shells
         if      occ == 0  ||  occ == 2*(2*shell.l + 1)
@@ -1672,7 +1667,6 @@ function Basics.generateConfigurations(theme::Basics.ForPhotoEmission, confs::Ar
         # Determine configuration due to an de-excitation of an electron within valenceShells
         if     length(valenceShells) < 2   @warn("Less than two valence shells are found for photoemission: $valenceShells ")
                newConfigs = Configuration[]
-               ##x return( Configuration[] )
         else 
                addConfigs = Basics.generateConfigurations(AddElectrons(1, valenceShells[1:1]), [conf])
                newConfigs = Basics.generateConfigurations(RemoveElectrons(1, valenceShells[2:end]), addConfigs)
@@ -1940,13 +1934,8 @@ function Basics.displayConfigurations(Z::Float64, confs::Array{Configuration,1};
                 ## nxx = nxx + 1;    if nxx > 4   break    end                                         ## delete nxx
                 nc = nc + 1
                 push!(confList, conf ) 
-                ##x wa = Semiempirical.estimate("binding energy: XrayDataBooklet", round(Int64, Z), conf);  
                 wa = -Empirical.totalEnergy(round(Int64, Z), conf, data = PeriodicTable.XrayDataBooklet() )
                 wa = Defaults.convertUnits("energy: from atomic", wa)
-                ##x if  Z > 36.0    wa = 0.
-                ##x else            wa = Semiempirical.estimate("binding energy: XrayDataBooklet", round(Int64, Z), conf);    
-                ##x                 wa = Defaults.convertUnits("energy: from atomic", wa)
-                ##x end
                 sb = "   av. BE = "  * string( round(-wa) ) * "  " * TableStrings.inUnits("energy")
                 sd = "      " * string(conf) * "                                "
                 println(sd[1:nd+3] * sb * "      ($nc)" )

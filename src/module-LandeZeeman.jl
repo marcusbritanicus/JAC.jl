@@ -11,6 +11,18 @@ using Printf, ..AngularMomentum, ..Basics, ..Defaults, ..InteractionStrength, ..
 
 
 """
+`abstract type LandeZeeman.AbstractZeemanKind`
+    ... defines an abstract and two singleton types to select the N^(1) or Delta N^(1) Zeeman amplitude.
+
+    + ZeemanN1       ... non-relativistic Zeeman operator N^(1).
+    + ZeemanDeltaN1  ... relativistic correction Delta N^(1) to the Zeeman operator.
+"""
+abstract type  AbstractZeemanKind                          end
+struct         ZeemanN1       <:  AbstractZeemanKind       end
+struct         ZeemanDeltaN1  <:  AbstractZeemanKind       end
+
+
+"""
 `struct  LandeZeeman.SublevelJ`  ... defines a type to specify a magnetic sublevel with well-defined J.
 
     + M                      ::AngularM64        ... M_J-value
@@ -129,11 +141,37 @@ end
 
 
 """
-`LandeZeeman.Settings()`  
+`LandeZeeman.Settings()`
     ... constructor for an `empty` instance of ZeemanSettings for the computation of isotope M and F parameters.
-    """
-    function Settings()
-        Settings(false, false, false, false, false, false, 0., LevelSelection(), Multiplet() )
+"""
+function Settings()
+    Settings(false, false, false, false, false, false, 0., LevelSelection(), Multiplet() )
+end
+
+
+"""
+`LandeZeeman.Settings(set::LandeZeeman.Settings; keywords...)`
+    ... keyword constructor to modify selected fields of a LandeZeeman.Settings object;
+        for fields not given, the values of set are used.
+"""
+function Settings(set::LandeZeeman.Settings;
+        calcLandeJ::Union{Nothing,Bool}=nothing,           calcLandeF::Union{Nothing,Bool}=nothing,
+        calcZeeman::Union{Nothing,Bool}=nothing,            calcQZScoeff::Union{Nothing,Bool}=nothing,
+        includeSchwinger::Union{Nothing,Bool}=nothing,      printBefore::Union{Nothing,Bool}=nothing,
+        BField::Union{Nothing,Float64}=nothing,             levelSelection::Union{Nothing,LevelSelection}=nothing,
+        gMultiplet::Union{Nothing,Multiplet}=nothing)
+    if  isnothing(calcLandeJ)         calcLandeJx       = set.calcLandeJ       else   calcLandeJx       = calcLandeJ       end
+    if  isnothing(calcLandeF)         calcLandeFx       = set.calcLandeF       else   calcLandeFx       = calcLandeF       end
+    if  isnothing(calcZeeman)         calcZeemanx       = set.calcZeeman       else   calcZeemanx       = calcZeeman       end
+    if  isnothing(calcQZScoeff)       calcQZScoeffx     = set.calcQZScoeff     else   calcQZScoeffx     = calcQZScoeff     end
+    if  isnothing(includeSchwinger)   includeSchwingerx = set.includeSchwinger else   includeSchwingerx = includeSchwinger end
+    if  isnothing(printBefore)        printBeforex      = set.printBefore      else   printBeforex      = printBefore      end
+    if  isnothing(BField)             BFieldx           = set.BField           else   BFieldx           = BField           end
+    if  isnothing(levelSelection)     levelSelectionx   = set.levelSelection   else   levelSelectionx   = levelSelection   end
+    if  isnothing(gMultiplet)         gMultipletx       = set.gMultiplet       else   gMultipletx       = gMultiplet       end
+
+    Settings( calcLandeJx, calcLandeFx, calcZeemanx, calcQZScoeffx, includeSchwingerx, printBeforex,
+              BFieldx, levelSelectionx, gMultipletx )
 end
 
 
@@ -152,98 +190,100 @@ end
 
 
 """
-`LandeZeeman.amplitude(kind::String, rLevel::Level, sLevel::Level, grid::Radial.Grid)` 
-    ... to compute either the  N^(1) or Delta N^(1) Zeeman amplitude <alpha_r J_r || N^(1)) || alpha_s J_s>  
+`LandeZeeman.amplitude(::ZeemanN1, rLevel::Level, sLevel::Level, grid::Radial.Grid)`
+    ... to compute the N^(1) Zeeman amplitude <alpha_r J_r || N^(1) || alpha_s J_s>
         for a given pair of levels. A value::ComplexF64 is returned.
 """
-function  amplitude(kind::String, rLevel::Level, sLevel::Level, grid::Radial.Grid)
+function  amplitude(::ZeemanN1, rLevel::Level, sLevel::Level, grid::Radial.Grid)
     nr = length(rLevel.basis.csfs);    ns = length(sLevel.basis.csfs);    matrix = zeros(ComplexF64, nr, ns)
-    printstyled("Compute Zeeman $(kind[1:5]) matrix of dimension $nr x $ns ... ", color=:light_green)
-    #
+    printstyled("Compute Zeeman N^(1) matrix of dimension $nr x $ns ... ", color=:light_green)
     if  rLevel.parity != sLevel.parity   return( ComplexF64(0.) )   end
     #
     for  r = 1:nr
         for  s = 1:ns
             me = 0.
-            if  rLevel.basis.csfs[r].parity  != rLevel.parity             ||  sLevel.basis.csfs[s].parity  != sLevel.parity  ||
-                rLevel.parity != sLevel.parity     ||  rLevel.mc[r] == 0  ||  sLevel.mc[s] == 0   continue    
-            end 
-            #
-            if      kind == "N^(1) amplitude"
-            #--------------------------------
-                subshellList = sLevel.basis.subshells
-                opa = SpinAngular.OneParticleOperator(1, plus, true)
-                wa  = SpinAngular.computeCoefficients(opa, rLevel.basis.csfs[r], sLevel.basis.csfs[s], subshellList) 
-                #
-                for  coeff in wa
-                    tamp  = InteractionStrength.zeeman_n1(rLevel.basis.orbitals[coeff.a], sLevel.basis.orbitals[coeff.b], grid)
-                    ##x @show "***** n1-amplitude", coeff.a, coeff.b, tamp
-                    me = me + coeff.T * tamp  
-                end
-            #
-            elseif  kind == "Delta N^(1) amplitude"
-            #--------------------------------------
-                subshellList = sLevel.basis.subshells
-                opa = SpinAngular.OneParticleOperator(1, plus, true)
-                wa  = SpinAngular.computeCoefficients(opa, rLevel.basis.csfs[r], sLevel.basis.csfs[s], subshellList) 
-                #
-                for  coeff in wa
-                    tamp  = InteractionStrength.zeeman_Delta_n1(rLevel.basis.orbitals[coeff.a], sLevel.basis.orbitals[coeff.b], grid)
-                    me = me + coeff.T * tamp  
-                end
-            #
-            else    error("stop a")
+            if  rLevel.basis.csfs[r].parity  != rLevel.parity    ||  sLevel.basis.csfs[s].parity  != sLevel.parity  ||
+                rLevel.mc[r] == 0  ||  sLevel.mc[s] == 0   continue
             end
-            #
+            subshellList = sLevel.basis.subshells
+            opa = SpinAngular.OneParticleOperator(1, plus, true)
+            wa  = SpinAngular.computeCoefficients(opa, rLevel.basis.csfs[r], sLevel.basis.csfs[s], subshellList)
+            for  coeff in wa
+                tamp  = InteractionStrength.zeeman_n1(rLevel.basis.orbitals[coeff.a], sLevel.basis.orbitals[coeff.b], grid)
+                me = me + coeff.T * tamp
+            end
             matrix[r,s] = me
-            ##x @show r, s, me
         end
     end
     printstyled("done.\n", color=:light_green)
-    amplitude = transpose(rLevel.mc) * matrix * sLevel.mc 
-    ##x @show "*****", rLevel.J, sLevel.J, amplitude
-    #
+    amplitude = transpose(rLevel.mc) * matrix * sLevel.mc
     return( amplitude )
 end
 
 
 """
-`LandeZeeman.amplitudeN1(kind::String, rLevel::Level, sLevel::Level, grid::Radial.Grid; display::Bool=false)`  
-    ... to compute the (reduced) Zeeman amplitude <alpha_r J_r || N^(1)) || alpha_s J_s>  
+` + amplitude(::ZeemanDeltaN1, rLevel::Level, sLevel::Level, grid::Radial.Grid)`
+    ... to compute the Delta N^(1) Zeeman amplitude <alpha_r J_r || Delta N^(1) || alpha_s J_s>
         for a given pair of levels. A value::ComplexF64 is returned.
 """
-function amplitudeN1(kind::String, rLevel::Level, sLevel::Level, grid::Radial.Grid; display::Bool=false)
+function  amplitude(::ZeemanDeltaN1, rLevel::Level, sLevel::Level, grid::Radial.Grid)
+    nr = length(rLevel.basis.csfs);    ns = length(sLevel.basis.csfs);    matrix = zeros(ComplexF64, nr, ns)
+    printstyled("Compute Zeeman ΔN^(1) matrix of dimension $nr x $ns ... ", color=:light_green)
+    if  rLevel.parity != sLevel.parity   return( ComplexF64(0.) )   end
     #
+    for  r = 1:nr
+        for  s = 1:ns
+            me = 0.
+            if  rLevel.basis.csfs[r].parity  != rLevel.parity    ||  sLevel.basis.csfs[s].parity  != sLevel.parity  ||
+                rLevel.mc[r] == 0  ||  sLevel.mc[s] == 0   continue
+            end
+            subshellList = sLevel.basis.subshells
+            opa = SpinAngular.OneParticleOperator(1, plus, true)
+            wa  = SpinAngular.computeCoefficients(opa, rLevel.basis.csfs[r], sLevel.basis.csfs[s], subshellList)
+            for  coeff in wa
+                tamp  = InteractionStrength.zeeman_Delta_n1(rLevel.basis.orbitals[coeff.a], sLevel.basis.orbitals[coeff.b], grid)
+                me = me + coeff.T * tamp
+            end
+            matrix[r,s] = me
+        end
+    end
+    printstyled("done.\n", color=:light_green)
+    amplitude = transpose(rLevel.mc) * matrix * sLevel.mc
+    return( amplitude )
+end
+
+
+"""
+`LandeZeeman.amplitudeN1(::ZeemanN1, rLevel::Level, sLevel::Level, grid::Radial.Grid; display::Bool=false)`
+    ... to compute the (reduced) Zeeman amplitude <alpha_r J_r || N^(1) || alpha_s J_s>
+        for a given pair of levels. A value::ComplexF64 is returned.
+"""
+function amplitudeN1(::ZeemanN1, rLevel::Level, sLevel::Level, grid::Radial.Grid; display::Bool=false)
     if     rLevel.parity != sLevel.parity     amplitude = ComplexF64(0.)
     else
         nr = length(rLevel.basis.csfs);    ns = length(sLevel.basis.csfs)
         if display   printstyled("Compute Zeeman N^(1) matrix of dimension $nr x $ns in the given bases " *
                                  "[transition $(rLevel.index)- $(sLevel.index)] ... ", color=:light_green)     end
-        matrix = zeros(ComplexF64, nf, ni)
+        matrix = zeros(ComplexF64, nr, ns)
         #
         for  r = 1:nr
             for  s = 1:ns
                 if  rLevel.mc[r] == 0  ||  sLevel.mc[s] == 0    continue    end
-                    
                 subshellList = sLevel.basis.subshells
                 opa = SpinAngular.OneParticleOperator(1, plus, true)
-                wa  = SpinAngular.computeCoefficients(opa, rLevel.basis.csfs[r], sLevel.basis.csfs[s], subshellList) 
-                #
+                wa  = SpinAngular.computeCoefficients(opa, rLevel.basis.csfs[r], sLevel.basis.csfs[s], subshellList)
                 for  coeff in wa
-                    ##x ja   = Basics.subshell_2j(rLevel.basis.orbitals[coeff.a].subshell)
-                    ##x jb   = Basics.subshell_2j(sLevel.basis.orbitals[coeff.b].subshell)
                     tamp = InteractionStrength.zeeman_n1(rLevel.basis.orbitals[coeff.a], sLevel.basis.orbitals[coeff.b], grid)
-                    matrix[r,s] = matrix[r,s] + coeff.T * tamp  
+                    matrix[r,s] = matrix[r,s] + coeff.T * tamp
                 end
             end
         end
         if display   printstyled("done. \n", color=:light_green)   end
-        amplitude = transpose(finalLevel.mc) * matrix * initialLevel.mc 
+        amplitude = transpose(rLevel.mc) * matrix * sLevel.mc
     end
-    #
     if  display
         sa = @sprintf("%.5e", amplitude.re) * "  " * @sprintf("%.5e", amplitude.im)
-        println("    < level=$(rLevel.index) [J=$(rLevel.J)$(string(rLevel.parity))] || T^(E$k) ||" *
+        println("    < level=$(rLevel.index) [J=$(rLevel.J)$(string(rLevel.parity))] || N^(1) ||" *
                 " $(sLevel.index) [$(sLevel.J)$(string(sLevel.parity))] >  = " * sa)
         printSummary, iostream = Defaults.getDefaults("summary flag/stream")
         if  printSummary
@@ -251,7 +291,6 @@ function amplitudeN1(kind::String, rLevel::Level, sLevel::Level, grid::Radial.Gr
                                " $(sLevel.index) [$(sLevel.J)$(string(sLevel.parity))] >  = " * sa)
         end
     end
-    
     return( amplitude )
 end
 
@@ -269,15 +308,14 @@ function  computeAmplitudesProperties(outcome::LandeZeeman.Outcome, grid::Radial
     #
     if       J == 0.                        LandeJ = 0.
     elseif   settings.calcLandeJ
-        amplitudeN1 = LandeZeeman.amplitude("N^(1) amplitude", outcome.Jlevel, outcome.Jlevel, grid)
+        amplitudeN1 = LandeZeeman.amplitude(ZeemanN1(), outcome.Jlevel, outcome.Jlevel, grid)
         #
         if  settings.includeSchwinger
-            amplitudeDeltaN1 = LandeZeeman.amplitude("Delta N^(1) amplitude", outcome.Jlevel, outcome.Jlevel, grid)
+            amplitudeDeltaN1 = LandeZeeman.amplitude(ZeemanDeltaN1(), outcome.Jlevel, outcome.Jlevel, grid)
         end
         #       
         LandeJ = 2*(amplitudeN1 + amplitudeDeltaN1) / sqrt(J*(J+1))    
     end
-    ##x @show J, LandeJ, amplitudeN1, amplitudeDeltaN1
     
 
     if settings.calcQZScoeff  &&  outcome.nuclearI != AngularJ64(0)
@@ -328,13 +366,13 @@ function  computeQuadraticZeemanC2(level::Level, Jsub::SublevelJ, grid::Radial.G
         end
         @show  "compute c2: aa", nLevel.J, nLevel.parity
 
-        amplitudeN1 = LandeZeeman.amplitude("N^(1) amplitude", nLevel, level, grid)
+        amplitudeN1 = LandeZeeman.amplitude(ZeemanN1(), nLevel, level, grid)
         println("       <level=$(nLevel.index) [J=$(nLevel.J)$(string(nLevel.parity))] || N^(1) || " *
                         "level=$(level.index) [J=$(level.J)$(string(level.parity))] >  = $(amplitudeN1)")
         amplitudeDeltaN1 = 0.
 
         if settings.includeSchwinger
-            amplitudeDeltaN1 = LandeZeeman.amplitude("Delta N^(1) amplitude", nLevel, level, grid)
+            amplitudeDeltaN1 = LandeZeeman.amplitude(ZeemanDeltaN1(), nLevel, level, grid)
             println("       <level=$(nLevel.index) [J=$(nLevel.J)$(string(nLevel.parity))] || ΔN^(1) || " *
                         "level=$(level.index) [J=$(level.J)$(string(level.parity))] > = $(amplitudeDeltaN1)")
         end
@@ -346,7 +384,6 @@ function  computeQuadraticZeemanC2(level::Level, Jsub::SublevelJ, grid::Radial.G
         c2 = c2 + cg^2 / (level.energy - nLevel.energy) * amp^2
         @show  "compute c2: cc", amplitudeN1, amplitudeDeltaN1, c2
 
-        ##x w3jValue = AngularMomentum.Wigner_3j(level.J, AngularJ64(1), ilevel.J, Jsub.M, AngularM64(0), AngularM64(-Jsub.M.num//Jsub.M.den))
     end
 
     conv = 0.11909076 #Conversion Factor from atomic units to MHz/T^2
@@ -370,8 +407,8 @@ function  computeQuadraticZeemanC2(multiplet::Multiplet, level::Level, Fsub::Sub
     println("   >>> Calculate Hyperfine parameters ...")
 
     #Calculate hyperfine splitting
-    amplitudeT1 = Hfs.amplitude("T^(1) amplitude", level, level, grid, printout=false)
-    amplitudeT2 = Hfs.amplitude("T^(2) amplitude", level, level, grid, printout=false)
+    amplitudeT1 = Hfs.amplitude(Basics.M1, level, level, grid; printout=false)
+    amplitudeT2 = Hfs.amplitude(Basics.E2, level, level, grid; printout=false)
     j = Float64(level.J)
     i = Float64(nm.spinI)
     A = nm.mu/i * 1/sqrt(j * (j + 1)) * amplitudeT1
@@ -383,13 +420,13 @@ function  computeQuadraticZeemanC2(multiplet::Multiplet, level::Level, Fsub::Sub
 
     # Sum over hyperfine levels
     Fvalues = Basics.oplus(nm.spinI, level.J)
-    amplitudeN1 = LandeZeeman.amplitude("N^(1) amplitude", level, level, grid)
+    amplitudeN1 = LandeZeeman.amplitude(ZeemanN1(), level, level, grid)
     println("       <level=$(level.index) [J=$(level.J)$(string(level.parity))] || N^(1) || " *
                     "level=$(level.index) [J=$(level.J)$(string(level.parity))] > = $(amplitudeN1)")
     amplitudeDeltaN1 = 0.0
 
     if settings.includeSchwinger
-        amplitudeDeltaN1 = LandeZeeman.amplitude("Delta N^(1) amplitude", level, level, grid)
+        amplitudeDeltaN1 = LandeZeeman.amplitude(ZeemanDeltaN1(), level, level, grid)
         println("       <level=$(level.index) [J=$(level.J)$(string(level.parity))|| ΔN^(1) || " *
                         "level=$(level.index) [J=$(level.J)$(string(level.parity))] > = $(amplitudeDeltaN1)")
     end
@@ -414,12 +451,12 @@ function  computeQuadraticZeemanC2(multiplet::Multiplet, level::Level, Fsub::Sub
             continue
         end
 
-        amplitudeN1 = LandeZeeman.amplitude("N^(1) amplitude", ilevel, level, grid)
+        amplitudeN1 = LandeZeeman.amplitude(ZeemanN1(), ilevel, level, grid)
         println("       <level=$(level.index) [J=$(level.J)$(string(level.parity))] || N^(1) || " *
                         "level=$(ilevel.index) [J=$(ilevel.J)$(string(ilevel.parity))] > = $(amplitudeN1)")
 
         if settings.includeSchwinger
-            amplitudeDeltaN1 = LandeZeeman.amplitude("Delta N^(1) amplitude", ilevel, level, grid)
+            amplitudeDeltaN1 = LandeZeeman.amplitude(ZeemanDeltaN1(), ilevel, level, grid)
             println("       <level=$(level.index) [J=$(level.J)$(string(level.parity))] || ΔN^(1) || " *
                             "level=$(ilevel.index) [J=$(ilevel.J)$(string(ilevel.parity))] > = $(amplitudeDeltaN1)")
         end

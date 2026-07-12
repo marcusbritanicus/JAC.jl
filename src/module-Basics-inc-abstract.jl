@@ -447,6 +447,7 @@ end
     + ForStepwiseDecay        ... to generate configurations that are related by photoemission and autoionization.
 
     + ForGivenConfigs         ... to perform computations for given configurations.
+    + ForIsoelectronicSequence  ... to compute configuration-averaged energies along an isoelectronic sequence.
     
     + GroundConfiguration     ... to generate the ground configuration for a given number of electrons.
     + MeanConfiguration       ... to generate the mean configuration, i.e. a configuration with mean occupation numbers.
@@ -494,6 +495,7 @@ struct   ForPhotoEmission               <:  AbstractConfigurationTheme     end
 struct   ForPhotoIonization             <:  AbstractConfigurationTheme     end
 
 struct   ForGivenConfigs                <:  AbstractConfigurationTheme     end
+struct   ForIsoelectronicSequence       <:  AbstractConfigurationTheme     end
 #
 struct   MeanConfiguration              <:  AbstractConfigurationTheme     end
 struct   RelativisticConfigurations     <:  AbstractConfigurationTheme     end
@@ -528,7 +530,6 @@ struct   ValenceShells                  <:  AbstractConfigurationTheme     end
 struct   FineStructure                  <:  AbstractConfigurationTheme     end
 struct   FineStructureLS                <:  AbstractConfigurationTheme     end
 struct   HundsRules                     <:  AbstractConfigurationTheme     end
-struct   HyperfineStructure             <:  AbstractConfigurationTheme     end
 
 export  AbstractConfigurationTheme, AddElectrons, ExciteElectrons, RemoveElectrons, RestrictExcitations,
         ForAutoIonization, ForElectronCapture, ForDielectronicCapture, ForDielectronicRecombination, ForHollowIons, 
@@ -833,6 +834,27 @@ end
 function Base.show(io::IO, theme::Basics.ForStepwiseDecay)
     sa = string(theme);       print(io, sa)
 end
+  
+  
+"""
+`struct  Basics.HyperfineStructure      <:  AbstractConfigurationTheme`   
+    ... to display the total F hyperfine-structure levels of a configuration (without energies).
+
+    + spinI        ::AngularJ64   ... Nuclear spin I.
+"""
+struct   HyperfineStructure             <:  AbstractConfigurationTheme
+    spinI          ::AngularJ64 
+end
+
+
+function Base.string(theme::Basics.HyperfineStructure)
+    sa = "HyperfineStructure theme with nuclear spin $(theme.spinI)."
+    return( sa )
+end
+
+function Base.show(io::IO, theme::Basics.HyperfineStructure)
+    sa = string(theme);       print(io, sa)
+end
 
         
 """
@@ -1010,6 +1032,27 @@ export  AbstractEeInteraction, DiagonalCoulomb, CoulombInteraction, CoulombGaunt
 function Base.show(io::IO, eeint::Union{BreitInteraction,CoulombBreit}) 
     sa = "$(typeof(eeint)) [factor=$(eeint.factor)]";                print(io, sa)
 end
+
+#################################################################################################################################
+#################################################################################################################################
+
+
+"""
+`abstract type Basics.AbstractEmissionKind`
+    ... defines an abstract and two singleton types to distinguish between the emission and
+        absorption direction of a radiative amplitude.
+
+    + struct Emission    ... to compute the photon-emission amplitude  <f || O^(Mp) || i>.
+    + struct Absorption  ... to compute the photon-absorption amplitude <f || O^(Mp) || i>;
+                            equal to the conjugate of the emission amplitude with initial
+                            and final levels interchanged.
+"""
+abstract type  AbstractEmissionKind                      end
+struct         Emission    <:  AbstractEmissionKind      end
+struct         Absorption  <:  AbstractEmissionKind      end
+
+export  AbstractEmissionKind, Emission, Absorption
+
 
 #################################################################################################################################
 #################################################################################################################################
@@ -2206,4 +2249,208 @@ struct     AddWarning           <:  AbstractWarning     end
 struct     PrintWarnings        <:  AbstractWarning     end
 struct     ResetWarnings        <:  AbstractWarning     end
 
-export  AbstractWarning, AddWarning, PrintWarnings, ResetWarnings 
+export  AbstractWarning, AddWarning, PrintWarnings, ResetWarnings
+
+
+"""
+`abstract type Basics.AbstractIntegrationRule`
+    ... defines an abstract and three singleton types to select the numerical integration rule
+        used by Basics.integrate() on a radial grid.
+
+    + NewtonCotes  ... 5-point Newton-Cotes formula.
+    + SimpsonRule  ... Simpson's rule.
+    + TrapezRule   ... simple trapezoid rule.
+"""
+abstract type  AbstractIntegrationRule                          end
+struct         NewtonCotes  <:  AbstractIntegrationRule         end
+struct         SimpsonRule  <:  AbstractIntegrationRule         end
+struct         TrapezRule   <:  AbstractIntegrationRule         end
+
+export  AbstractIntegrationRule, NewtonCotes, SimpsonRule, TrapezRule
+
+
+#################################################################################################################################
+#################################################################################################################################
+
+
+"""
+`abstract type Basics.AbstractGenerateTheme`
+    ... defines an abstract and a number of singleton types to select the generation theme for Basics.generate(),
+        replacing the former string-key dispatch.
+
+    + CondensedMultiplet                   ... condense/reduce the CSF basis of a multiplet by a single weight.
+    + ConfigurationListNRFromBasis         ... generate the NR configuration list from a given basis.
+    + ConfigurationListNRFromConfiguration ... generate an NR configuration list from a reference configuration with excitations.
+    + CsfList                              ... construct the CSF list from a single relativistic configuration.
+    + OrderedShellList                     ... generate an ordered NR shell list from a set of configurations.
+    + OrderedSubshellList                  ... generate an ordered relativistic subshell list from configurations or two bases.
+    + SlaterTypeSpectrum                   ... generate a complete single-electron STO spectrum (positive and negative states).
+    + SlaterTypeSpectrumPositive           ... generate the same but return only the positive states.
+"""
+abstract type  AbstractGenerateTheme                                              end
+struct         CondensedMultiplet              <:  AbstractGenerateTheme          end
+struct         ConfigurationListNRFromBasis    <:  AbstractGenerateTheme          end
+struct         ConfigurationListNRFromConfiguration  <:  AbstractGenerateTheme    end
+struct         CsfList                         <:  AbstractGenerateTheme          end
+struct         OrderedShellList                <:  AbstractGenerateTheme          end
+struct         OrderedSubshellList             <:  AbstractGenerateTheme          end
+struct         SlaterTypeSpectrum              <:  AbstractGenerateTheme          end
+struct         SlaterTypeSpectrumPositive      <:  AbstractGenerateTheme          end
+
+export  AbstractGenerateTheme, CondensedMultiplet, ConfigurationListNRFromBasis, ConfigurationListNRFromConfiguration,
+        CsfList, OrderedShellList, OrderedSubshellList, SlaterTypeSpectrum, SlaterTypeSpectrumPositive
+
+
+#################################################################################################################################
+#################################################################################################################################
+
+
+"""
+`abstract type Basics.AbstractComputeTheme`
+    ... defines an abstract and a number of singleton types to select the computation theme for Basics.compute(),
+        replacing the former string-key dispatch.
+
+    + AngularCoeffsEeRatip2013    ... compute electron-electron angular coefficients via the Ratip2013 interface.
+    + AngularCoeffs1pRatip2013    ... compute single-particle angular coefficients via the Ratip2013 interface.
+    + AngularCoeffs1pGrasp92      ... compute single-particle angular coefficients via the Grasp92 interface.
+    + CImatrixWithSymmetryJP      ... compute the CI Hamiltonian matrix for a given J^P symmetry block.
+    + RadialOrbitalBunge1993      ... generate a start orbital from Bunge (1993) Roothaan-Hartree-Fock data.
+    + RadialOrbitalMcLean1981     ... generate a start orbital from McLean (1981) Roothaan-Hartree-Fock data.
+    + RadialOrbitalHydrogenic     ... generate a hydrogenic start orbital.
+    + RadialOrbitalThomasFermi    ... generate a Thomas-Fermi start orbital.
+"""
+abstract type  AbstractComputeTheme                                              end
+struct         AngularCoeffsEeRatip2013   <:  AbstractComputeTheme              end
+struct         AngularCoeffs1pRatip2013   <:  AbstractComputeTheme              end
+struct         AngularCoeffs1pGrasp92     <:  AbstractComputeTheme              end
+struct         CImatrixWithSymmetryJP     <:  AbstractComputeTheme              end
+struct         RadialOrbitalBunge1993     <:  AbstractComputeTheme              end
+struct         RadialOrbitalMcLean1981    <:  AbstractComputeTheme              end
+struct         RadialOrbitalHydrogenic    <:  AbstractComputeTheme              end
+struct         RadialOrbitalThomasFermi   <:  AbstractComputeTheme              end
+
+export  AbstractComputeTheme, AngularCoeffsEeRatip2013, AngularCoeffs1pRatip2013, AngularCoeffs1pGrasp92,
+        CImatrixWithSymmetryJP, RadialOrbitalBunge1993, RadialOrbitalMcLean1981, RadialOrbitalHydrogenic, RadialOrbitalThomasFermi
+
+
+"""
+`abstract type Basics.AbstractDisplayTheme`
+    ... defines an abstract and a number of singleton types to select the display theme for Basics.display(),
+        replacing the former string-key dispatch.
+
+    + PhysicalConstants   ... display all currently defined physical constants.
+    + CurrentSettings     ... display all currently defined settings of the JAC module.
+"""
+abstract type  AbstractDisplayTheme                                end
+struct         PhysicalConstants   <:  AbstractDisplayTheme       end
+struct         CurrentSettings     <:  AbstractDisplayTheme       end
+
+export  AbstractDisplayTheme, PhysicalConstants, CurrentSettings
+
+
+"""
+`abstract type Basics.AbstractPlotTheme`
+    ... defines an abstract and a number of singleton types to select the plot theme for Basics.plot(),
+        replacing the former string-key dispatch.
+
+    + RadialPotentials    ... plot one or more radial potentials.
+    + RadialOrbitalsLarge ... plot the large component of one or more radial orbitals.
+    + RadialOrbitalsSmall ... plot the small component of one or more radial orbitals.
+    + RadialOrbitalsBoth  ... plot both components of one or more radial orbitals.
+"""
+abstract type  AbstractPlotTheme                                   end
+struct         RadialPotentials    <:  AbstractPlotTheme           end
+struct         RadialOrbitalsLarge <:  AbstractPlotTheme           end
+struct         RadialOrbitalsSmall <:  AbstractPlotTheme           end
+struct         RadialOrbitalsBoth  <:  AbstractPlotTheme           end
+
+export  AbstractPlotTheme, RadialPotentials, RadialOrbitalsLarge, RadialOrbitalsSmall, RadialOrbitalsBoth
+
+
+"""
+`abstract type Basics.AbstractRecastTheme`
+    ... defines an abstract and a number of singleton types to select the recast theme for Basics.recast(),
+        replacing the former string-key dispatch.
+
+    + RecastRateToDecayWidth    ... recast a radiative rate (Einstein A, a.u.) to a decay width.
+    + RecastRateToEinsteinA     ... recast a radiative rate (Einstein A, a.u.) to Einstein A in selected units.
+    + RecastRateToEinsteinB     ... recast a radiative rate (Einstein A, a.u.) to Einstein B-coefficient.
+    + RecastRateToOscillatorGf  ... recast a radiative rate (Einstein A, a.u.) to oscillator strength g_f.
+    + RecastRateToOscillatorF   ... recast a radiative rate (Einstein A, a.u.) to oscillator strength f.
+    + RecastRateToLineStrengthS ... recast a radiative rate (Einstein A, a.u.) to line strength S.
+"""
+abstract type  AbstractRecastTheme                                           end
+struct         RecastRateToDecayWidth    <:  AbstractRecastTheme             end
+struct         RecastRateToEinsteinA     <:  AbstractRecastTheme             end
+struct         RecastRateToEinsteinB     <:  AbstractRecastTheme             end
+struct         RecastRateToOscillatorGf  <:  AbstractRecastTheme             end
+struct         RecastRateToOscillatorF   <:  AbstractRecastTheme             end
+struct         RecastRateToLineStrengthS <:  AbstractRecastTheme             end
+
+export  AbstractRecastTheme, RecastRateToDecayWidth, RecastRateToEinsteinA, RecastRateToEinsteinB,
+        RecastRateToOscillatorGf, RecastRateToOscillatorF, RecastRateToLineStrengthS
+
+
+"""
+`abstract type Basics.AbstractAnalyzeTheme`
+    ... labels the theme (kind) of a Basics.analyze() call; it is used for dispatch and to avoid string comparisons.
+    Concrete subtypes:
+    + LevelDecompositionOfNRconfigurations ... analyze and list the NR configurations with weight > 5 %.
+    + LevelDecompositionOfCsfR             ... analyze and list (up to N) jj-coupled CSF and their weights.
+"""
+abstract type  AbstractAnalyzeTheme                                                      end
+struct         LevelDecompositionOfNRconfigurations  <:  AbstractAnalyzeTheme            end
+struct         LevelDecompositionOfCsfR              <:  AbstractAnalyzeTheme            end
+
+export  AbstractAnalyzeTheme, LevelDecompositionOfNRconfigurations, LevelDecompositionOfCsfR
+
+
+"""
+`abstract type Basics.AbstractDiagonalizeTheme`
+    ... labels the theme (kind) of a Basics.diagonalize() call; it is used for dispatch and to avoid string comparisons.
+    Concrete subtypes:
+    + MatrixWithLinearAlgebra                 ... diagonalize a single symmetric matrix using LinearAlgebra.eigen().
+    + GeneralizedEigenvaluesWithLinearAlgebra ... solve a generalized eigenvalue problem using LinearAlgebra.eigen().
+"""
+abstract type  AbstractDiagonalizeTheme                                                       end
+struct         MatrixWithLinearAlgebra                 <:  AbstractDiagonalizeTheme            end
+struct         GeneralizedEigenvaluesWithLinearAlgebra <:  AbstractDiagonalizeTheme            end
+
+export  AbstractDiagonalizeTheme, MatrixWithLinearAlgebra, GeneralizedEigenvaluesWithLinearAlgebra
+
+
+"""
+`abstract type Basics.AbstractEstimateTheme`
+    ... labels the theme (kind) of a Semiempirical.estimate() call; it is used for dispatch and to avoid
+        string comparisons.
+    Concrete subtypes:
+    + EstimateIonizationPotentialInnerShell ... estimate the ionization potential of an inner-shell electron.
+    + EstimateBindingEnergyWilliams2000     ... estimate binding energies from Williams et al. (2000) tabulation.
+    + EstimateBindingEnergyLarkins1977      ... estimate binding energies from Larkins (1977) tabulation.
+    + EstimateBindingEnergyXrayDataBooklet  ... estimate binding energies from X-ray Data Booklet tabulation.
+"""
+abstract type  AbstractEstimateTheme                                                              end
+struct         EstimateIonizationPotentialInnerShell  <:  AbstractEstimateTheme                  end
+struct         EstimateBindingEnergyWilliams2000       <:  AbstractEstimateTheme                  end
+struct         EstimateBindingEnergyLarkins1977        <:  AbstractEstimateTheme                  end
+struct         EstimateBindingEnergyXrayDataBooklet    <:  AbstractEstimateTheme                  end
+
+export  AbstractEstimateTheme, EstimateIonizationPotentialInnerShell,
+        EstimateBindingEnergyWilliams2000, EstimateBindingEnergyLarkins1977, EstimateBindingEnergyXrayDataBooklet
+
+
+"""
+`abstract type Basics.AbstractReadFileTheme`
+    ... labels the file format for a Basics.read() call; it is used for dispatch and to avoid
+        string comparisons.
+    Concrete subtypes:
+    + ReadCslFileGrasp92    ... read a CSF list from a Grasp92 .csl / GRASP18 .c file.
+    + ReadOrbitalFileGrasp92 ... read orbitals from a (formatted) Grasp92 .rwf file.
+    + ReadMixingFileGrasp18  ... read energies & mixing coefficients from a Grasp18 mixing file.
+"""
+abstract type  AbstractReadFileTheme                                           end
+struct         ReadCslFileGrasp92     <:  AbstractReadFileTheme                end
+struct         ReadOrbitalFileGrasp92 <:  AbstractReadFileTheme                end
+struct         ReadMixingFileGrasp18  <:  AbstractReadFileTheme                end
+
+export  AbstractReadFileTheme, ReadCslFileGrasp92, ReadOrbitalFileGrasp92, ReadMixingFileGrasp18

@@ -7,7 +7,7 @@
 module PhotoIonization
 using Plots
 
-using Printf, ..AngularMomentum, ..Basics, ..Continuum, ..Defaults, ..Radial, ..Nuclear, ..ManyElectron, ..PhotoEmission,
+using Printf, WignerSymbols, ..AngularMomentum, ..Basics, ..Continuum, ..Defaults, ..Radial, ..Nuclear, ..ManyElectron, ..PhotoEmission,
               ..TableStrings
 
 """
@@ -19,6 +19,7 @@ using Printf, ..AngularMomentum, ..Basics, ..Continuum, ..Defaults, ..Radial, ..
     + electronEnergies              ::Array{Float64,1}    ... List of electron energies; usually only one of these lists are utilized.
     + thetas                        ::Array{Float64,1}    ... List of theta-values if angle-differential CS are calculated explicitly.
     + phis                          ::Array{Float64,1}    ... List of phi-values if angle-differential CS are calculated explicitly.
+    + mValue                        ::Float64             ... List of m-values for which all the calculations have to be performed.
     + calcAnisotropy                ::Bool                ... True, if the beta anisotropy parameters are to be calculated and false otherwise (o/w).
     + calcPartialCs                 ::Bool                ... True, if partial cross sections are to be calculated and false otherwise.
     + calcTimeDelay                 ::Bool                ... True, if time-delays are to be calculated and false otherwise.
@@ -37,6 +38,7 @@ struct Settings  <:  AbstractProcessSettings
     electronEnergies                ::Array{Float64,1}
     thetas                          ::Array{Float64,1}
     phis                            ::Array{Float64,1}
+    mValue                          ::Float64
     calcAnisotropy                  ::Bool
     calcPartialCs                   ::Bool
     calcTimeDelay                   ::Bool
@@ -49,12 +51,11 @@ struct Settings  <:  AbstractProcessSettings
     lValues                         ::Array{Int64,1}
 end
 
-
 """
 `PhotoIonization.Settings()`  ... constructor for the default values of photoionization line computations
 """
 function Settings()
-    Settings(Basics.EmMultipole[E1], Basics.UseGauge[Basics.UseCoulomb, Basics.UseBabushkin], Float64[], Float64[], Float64[], Float64[],
+    Settings(Basics.EmMultipole[E1], Basics.UseGauge[Basics.UseCoulomb, Basics.UseBabushkin], Float64[], Float64[], Float64[], Float64[], NaN,
                 false, false, false, false, false, false, LineSelection(), Basics.ExpStokes(), 0., [0,1,2,3,4,5])
 end
 
@@ -70,14 +71,15 @@ end
     ... constructor for modifying the given PhotoIonization.Settings by 'overwriting' the previously selected parameters.
 """
 function Settings(set::PhotoIonization.Settings;
-    multipoles::Union{Nothing,Array{EmMultipole,1}}=nothing,                gauges::Union{Nothing,Array{UseGauge,1}}=nothing,
-    photonEnergies::Union{Nothing,Array{Float64,1}}=nothing,                electronEnergies::Union{Nothing,Array{Float64,1}}=nothing,
-    thetas::Union{Nothing,Array{Float64,1}}=nothing,                        phis::Union{Nothing,Array{Float64,1}}=nothing,
-    calcAnisotropy::Union{Nothing,Bool}=nothing,                            calcPartialCs::Union{Nothing,Bool}=nothing,
-    calcTimeDelay::Union{Nothing,Bool}=nothing,                             calcNonE1AngleDifferentialCS::Union{Nothing,Bool}=nothing,
-    calcTensors::Union{Nothing,Bool}=nothing,                               printBefore::Union{Nothing,Bool}=nothing,
-    lineSelection::Union{Nothing,LineSelection}=nothing,                    stokes::Union{Nothing,ExpStokes}=nothing,
-    freeElectronShift::Union{Nothing,Float64}=nothing,                      lValues::Union{Nothing,Array{Int64,1}}=nothing)
+    multipoles::Union{Nothing,Array{EmMultipole,1}}=nothing,         gauges::Union{Nothing,Array{UseGauge,1}}=nothing,
+    photonEnergies::Union{Nothing,Array{Float64,1}}=nothing,         electronEnergies::Union{Nothing,Array{Float64,1}}=nothing,
+    thetas::Union{Nothing,Array{Float64,1}}=nothing,                 phis::Union{Nothing,Array{Float64,1}}=nothing,
+    mValue ::Union{Nothing,Float64}=nothing,                         calcAnisotropy::Union{Nothing,Bool}=nothing,
+    calcPartialCs::Union{Nothing,Bool}=nothing,                      calcTimeDelay::Union{Nothing,Bool}=nothing,
+    calcNonE1AngleDifferentialCS::Union{Nothing,Bool}=nothing,       calcTensors::Union{Nothing,Bool}=nothing,
+    printBefore::Union{Nothing,Bool}=nothing,                        lineSelection::Union{Nothing,LineSelection}=nothing,
+    stokes::Union{Nothing,ExpStokes}=nothing,                        freeElectronShift::Union{Nothing,Float64}=nothing,
+    lValues::Union{Nothing,Array{Int64,1}}=nothing)
 
 
     if  multipoles        == nothing   multipolesx        = set.multipoles        else  multipolesx        = multipoles         end
@@ -86,6 +88,7 @@ function Settings(set::PhotoIonization.Settings;
     if  electronEnergies  == nothing   electronEnergiesx  = set.electronEnergies  else  electronEnergiesx  = electronEnergies   end
     if  thetas            == nothing   thetasx            = set.thetas            else  thetasx            = thetas             end
     if  phis              == nothing   phisx              = set.phis              else  phisx              = phis               end
+    if  mValue            == nothing   mValuex            = set.mValue            else  mValuex            = mValue             end
     if  calcAnisotropy    == nothing   calcAnisotropyx    = set.calcAnisotropy    else  calcAnisotropyx    = calcAnisotropy     end
     if  calcPartialCs     == nothing   calcPartialCsx     = set.calcPartialCs     else  calcPartialCsx     = calcPartialCs      end
     if  calcTimeDelay     == nothing   calcTimeDelayx     = set.calcTimeDelay     else  calcTimeDelayx     = calcTimeDelay      end
@@ -98,8 +101,9 @@ function Settings(set::PhotoIonization.Settings;
     if  freeElectronShift == nothing   freeElectronShiftx = set.freeElectronShift else  freeElectronShiftx = freeElectronShift  end
     if  lValues           == nothing   lValuesx           = set.lValues           else  lValuesx           = lValues            end
 
-    Settings( multipolesx, gaugesx, photonEnergiesx, electronEnergiesx, thetasx, phisx, calcAnisotropyx, calcPartialCsx, calcTimeDelayx,
-                calcNonE1AngleDifferentialCSx, calcTensorsx, printBeforex, lineSelectionx, stokesx, freeElectronShiftx, lValuesx)
+    Settings( multipolesx, gaugesx, photonEnergiesx, electronEnergiesx, thetasx, phisx, mValuex, calcAnisotropyx, calcPartialCsx,
+                calcTimeDelayx, calcNonE1AngleDifferentialCSx, calcTensorsx, printBeforex, lineSelectionx, stokesx,
+                freeElectronShiftx, lValuesx)
 end
 
 
@@ -111,6 +115,7 @@ function Base.show(io::IO, settings::PhotoIonization.Settings)
     println(io, "electronEnergies:              $(settings.electronEnergies)  ")
     println(io, "thetas:                        $(settings.thetas)  ")
     println(io, "phis:                          $(settings.phis)  ")
+    println(io, "mValue:                        $(settings.mValue)  ")
     println(io, "calcAnisotropy:                $(settings.calcAnisotropy)  ")
     println(io, "calcPartialCs:                 $(settings.calcPartialCs)  ")
     println(io, "calcTimeDelay:                 $(settings.calcTimeDelay)  ")
@@ -192,6 +197,15 @@ end
     + photonEnergy   ::Float64                ... Energy of the absorbed photon.
     + crossSection   ::EmProperty             ... Cross section for this photoionization.
     + angularBeta    ::EmProperty             ... beta -parameter for unpolarized targets with J=0, 1/2, 1
+    + angularBeta1   ::EmProperty             ...
+    + angularGamma1  ::EmProperty             ...
+    + angularGamma3  ::EmProperty             ...
+    + angularPi2     ::EmProperty             ...
+    + angularPi4     ::EmProperty             ...
+    + angularDelta1  ::EmProperty             ...
+    + angularLambda2 ::EmProperty             ...
+    + angularLambda4 ::EmProperty             ...
+    + angularUpsilon2::EmProperty             ...
     + coherentDelay  ::EmProperty             ... coherent time-delay due to the selected averaging of phases.
     + incoherentDelay::EmProperty             ... incoherent time-delay due to the selected averaging of phases.
     + channels       ::Array{PhotoIonization.Channel,1}  ... List of PhotoIonization.Channels of this line.
@@ -203,6 +217,15 @@ struct  Line
     photonEnergy     ::Float64
     crossSection     ::EmProperty
     angularBeta      ::EmProperty
+    angularBeta1     ::EmProperty
+    angularGamma1    ::EmProperty
+    angularGamma3    ::EmProperty
+    angularPi2       ::EmProperty
+    angularPi4       ::EmProperty
+    angularDelta1    ::EmProperty
+    angularLambda2   ::EmProperty
+    angularLambda4   ::EmProperty
+    angularUpsilon2  ::EmProperty
     coherentDelay    ::EmProperty
     incoherentDelay  ::EmProperty
     channels         ::Array{PhotoIonization.Channel,1}
@@ -215,7 +238,8 @@ end
 """
 function Line(initialLevel::Level, finalLevel::Level, crossSection::EmProperty)
     Line(initialLevel, finalLevel, totalRate, 0., 0., crossSection, EmProperty(0.), EmProperty(0.), EmProperty(0.),
-            EmProperty(0.), PhotoChannel[] )
+            EmProperty(0.), EmProperty(0.), EmProperty(0.), EmProperty(0.), EmProperty(0.), EmProperty(0.),
+            EmProperty(0.), EmProperty(0.), EmProperty(0.), EmProperty(0.), PhotoChannel[] )
 end
 
 
@@ -227,6 +251,15 @@ function Base.show(io::IO, line::PhotoIonization.Line)
     println(io, "photonEnergy:      $(line.photonEnergy)  ")
     println(io, "crossSection:      $(line.crossSection)  ")
     println(io, "angularBeta:       $(line.angularBeta)  ")
+    println(io, "angularBeta1:      $(line.angularBeta1)  ")
+    println(io, "angularGamma1:     $(line.angularGamma1)  ")
+    println(io, "angularGamma3:     $(line.angularGamma3)  ")
+    println(io, "angularPi2:        $(line.angularPi2)  ")
+    println(io, "angularPi4:        $(line.angularPi4)  ")
+    println(io, "angularDelta1:     $(line.angularDelta1)  ")
+    println(io, "angularLambda2:    $(line.angularLambda2)  ")
+    println(io, "angularLambda4:    $(line.angularLambda4)  ")
+    println(io, "angularUpsilon2:   $(line.angularUpsilon2)  ")
     println(io, "coherentDelay:     $(line.coherentDelay)  ")
     println(io, "incoherentDelay:   $(line.incoherentDelay)  ")
 end
@@ -242,7 +275,7 @@ end
 function amplitude(kind::String, channel::PhotoIonization.Channel, omega::Float64, continuumLevel::Level, initialLevel::Level, grid::Radial.Grid)
     if      kind in [ "photoionization"]
     #-----------------------------------
-        amp = PhotoEmission.amplitude("absorption", channel.multipole, channel.gauge, omega, continuumLevel, initialLevel, grid,
+        amp = PhotoEmission.amplitude(Absorption(), channel.multipole, channel.gauge, omega, continuumLevel, initialLevel, grid,
                                         display=false, printout=false)
         l         = Basics.subshell_l(Subshell(101, channel.kappa))
         amplitude = (1.0im)^(-l) * exp( -im*channel.phase ) * amp
@@ -262,15 +295,72 @@ end
         are fulfilled. A wa::Float64 is returned.
 """
 function angularFunctionK(L1::Int64, L2::Int64, X::Int64, Ji::AngularJ64, Jf::AngularJ64,
-                          kappa1::Int64, J1::AngularJ64, kappa2::Int64, J2::AngularJ64)
+                          kappa1::Int64, J1::AngularJ64, kappa2::Int64, J2::AngularJ64, gamma::Int64, mValue::Float64)
     s1 = Subshell(20,kappa1);   j1 = Basics.subshell_j(s1)
     s2 = Subshell(20,kappa2);   j2 = Basics.subshell_j(s2)
     wb = (2L1+1) * (Basics.twice(j1)+1) * (Basics.twice(J1)+1) * (2L2+1) * (Basics.twice(j2)+1) * (Basics.twice(J2)+1)
-    #wa = (2X+1) / (Basics.twice(Ji)+1)  *
     wa = (2X+1) * sqrt(wb) * AngularMomentum.phaseFactor([Ji, -1, Jf, 1, AngularJ64(1//2)])
-    wa = wa * AngularMomentum.Wigner_6j(J2, J1, X, j1, j2, Jf) * AngularMomentum.Wigner_6j(J2, J1, X, L1, L2, Ji)
 
-    return( wa )
+    J_val = Float64(J1)
+    J_p = Float64(J2)
+    ℓ = X
+    J₀ = Float64(Ji)
+    Jα = Float64(Jf)
+    jα_val = Float64(j1)
+    jα_p = Float64(j2)
+    j_val = L1
+    j_p = L2
+
+    Edmonds_sum = 0.0
+
+    for M in -J_val:J_val
+        for M_dprime in -J_p:J_p
+            #The above loop is to satisfy the orthogonality condition
+            Edmonds_sum1 = 0.0
+            Edmonds_sum2 = 0.0
+
+            # --- Ion+photoelectron Channels ---
+            # -- The loop below is to satisfy edmods eq 6.2.8
+            for Mα in -Jα:Jα
+                for mα in -jα_val:jα_val
+                    for mα_prime in -jα_p:jα_p
+
+                        exp0 = jα_val + jα_p + Jα + mα + mα_prime + Mα
+                        Edmonds_Term0 = (-1)^(round(Int, exp0 ))
+
+                        Edmonds_Term1 = AngularMomentum.Wigner_3j(J_p, jα_p, Jα, M_dprime, mα_prime, -Mα)
+                        Edmonds_Term2 = AngularMomentum.Wigner_3j(jα_val, J_val, Jα, -mα, M, Mα)
+                        Edmonds_Term3 = AngularMomentum.Wigner_3j(jα_val, jα_p, ℓ, mα, -mα_prime, gamma)
+
+                        Edmonds_sum1 += Edmonds_Term1 * Edmonds_Term2 * Edmonds_Term3 * Edmonds_Term0
+                    end
+                end
+            end
+
+            # --- photon+atom Channels ---
+            # -- The loop below is to satisfy edmods eq 6.2.8
+            for M₀ in -J₀:J₀
+                for m in -j_val:j_val
+                    for m_prime in -j_p:j_p
+
+                        exp02 = j_val + j_p + J₀ + m + m_prime + M₀
+
+                        Edmonds_Term02 = (-1)^(round(Int, exp02 ) )
+
+                        Edmonds_Term12 = AngularMomentum.Wigner_3j(J_p, j_p, J₀, M_dprime, m_prime, -M₀)
+                        Edmonds_Term22 = AngularMomentum.Wigner_3j(j_val, J_val, J₀, -m, M, M₀)
+                        Edmonds_Term32 = AngularMomentum.Wigner_3j(j_val, j_p, ℓ, m, -m_prime, gamma)
+
+                        Edmonds_sum2 += Edmonds_Term12 * Edmonds_Term22 * Edmonds_Term32 * Edmonds_Term02
+                    end
+                end
+            end
+
+            Edmonds_sum += (2 * ℓ + 1) * Edmonds_sum1 * Edmonds_sum2
+        end
+    end
+
+    return wa * Edmonds_sum
 end
 
 
@@ -282,26 +372,32 @@ end
         are fulfilled. A  wa::Float64 is returned.
 """
 function angularFunctionW(theta::Float64, L1::Int64, L2::Int64, X::Int64, lambda1::Int64, lambda2::Int64,
-                          kappa1::Int64, mu1::Rational{Int64}, kappa2::Int64, mu2::Rational{Int64})
-    if  abs(lambda1) > L1  ||   abs(lambda2) > L2  ||   abs(lambda2-lambda1) > X   return( 0.)    end
+                          kappa1::Int64, mu1::Rational{Int64}, kappa2::Int64, mu2::Rational{Int64}, l1::Int64, l2::Int64)
+    if  abs(lambda1) > L1  ||   abs(lambda2) > L2  ||   abs(lambda2-lambda1) > X   return( 0.0 )    end
     s1 = Subshell(20,kappa1);   j1 = Basics.subshell_j(s1)
     s2 = Subshell(20,kappa2);   j2 = Basics.subshell_j(s2)
-    wa = AngularMomentum.Wigner_dmatrix(X, lambda2-lambda1, Int64(mu2-mu1), theta) *
-         AngularMomentum.Wigner_3j(j2, j1, X, abs(mu2), -abs(mu1), mu2-mu1) *
-         AngularMomentum.Wigner_3j(L2, L1, X, -lambda2, lambda1, lambda2-lambda1)
+
+    Phase = l1 + l2 + 1/2 + mu2 + Float64(j2) + l2  + 1/2 + Float64(j1) + Float64(j2) + X
+
+    wa = (-1)^(round(Int, Phase )) *
+         AngularMomentum.Wigner_dmatrix(X, lambda2-lambda1, Int64(mu2-mu1), theta) *
+         AngularMomentum.Wigner_3j(j2, j1, X, mu2, -mu1, mu1-mu2) *
+         AngularMomentum.Wigner_3j(L2, L1, X, -lambda2, lambda1, lambda2-lambda1) *
+         sqrt(2 * l1 + 1) * AngularMomentum.Wigner_3j(l1, 1/2, j1, 0, mu1, -mu1) *
+         sqrt(2 * l2 + 1) * AngularMomentum.Wigner_3j(l2, 1/2, j2, 0, -mu2, mu2)
 
     return( wa )
 end
 
 
 """
-`PhotoIonization.computeDisplayNonE1AngleDifferentialCS(stream::IO, lines::Array{PhotoIonization.Line,1},
+`PhotoIonization.computeNonE1AngleDifferentialCS(stream::IO, lines::Array{PhotoIonization.Line,1},
                                                         settings::PhotoIonization.Settings)`
     ... to compute & display the non-E1 angle-differential photoionization cross sections for all PhotoIonization.Line's
         and at all angles theta as defined in the settings. The general formula by Nishita Hosea (2025) is applied here.
         A neat table is printed for each line but nothing is returned otherwise.
 """
-function computeDisplayNonE1AngleDifferentialCS(stream::IO, lines::Array{PhotoIonization.Line,1}, settings::PhotoIonization.Settings)
+function computeNonE1AngleDifferentialCS(stream::IO, lines::Array{PhotoIonization.Line,1}, settings::PhotoIonization.Settings)
     function spinDensityMatrix(lambda1::Int64, lambda2::Int64, stokes::ExpStokes)
         # Convert the Stokes parameters of the incoming light into a spin-density matrix on the indices lambda = +-1
         if      lambda1 == lambda2  == 1               return( (1.0 + stokes.P3)/2. )
@@ -356,11 +452,13 @@ function computeDisplayNonE1AngleDifferentialCS(stream::IO, lines::Array{PhotoIo
                         if  cha.gauge == Basics.Coulomb  &&   chb.gauge == Basics.Babushkin   continue    end
                         if  chb.gauge == Basics.Coulomb  &&   cha.gauge == Basics.Babushkin   continue    end
 
-                        s1 = Subshell(20,cha.kappa);   j1 = Basics.subshell_j(s1)
-                        s2 = Subshell(20,chb.kappa);   j2 = Basics.subshell_j(s2)
-                        s1_l   = Subshell( 101, cha.kappa )
+                        s1 = Subshell(20,cha.kappa);   j1 = Basics.subshell_j(s1);
+                        s2 = Subshell(20,chb.kappa);   j2 = Basics.subshell_j(s2);
+
+                        s1_l = Subshell( 101, cha.kappa )
                         ell1 = Basics.subshell_l( s1_l )
-                        s1_2   = Subshell( 101, chb.kappa )
+
+                        s1_2 = Subshell( 101, chb.kappa )
                         ell2 = Basics.subshell_l( s1_2 )
 
                         if  !AngularMomentum.isTriangle(cha.multipole.L, chb.multipole.L, X)                continue
@@ -383,25 +481,26 @@ function computeDisplayNonE1AngleDifferentialCS(stream::IO, lines::Array{PhotoIo
                             key1 = key2
                         end
 
-                        # Multiply by 2, because mu is fixed as 1//2
-                        K = 2. * PhotoIonization.angularFunctionK(
-                            cha.multipole.L, chb.multipole.L, X,
-                            line.initialLevel.J, line.finalLevel.J,
-                            cha.kappa, cha.symmetry.J, chb.kappa, chb.symmetry.J)
-
                         # Compute the summation over lambda's and mu's
-                        mu = 1//2
                         for  lambda1 = -1:2:1,   lambda2 = -1:2:1
-                            W = PhotoIonization.angularFunctionW(
-                                theta,
+                            # Multiply by 2, because mu is fixed as 1//2- reason is to be found!
+                            K = 2.0 * PhotoIonization.angularFunctionK(
                                 cha.multipole.L, chb.multipole.L, X,
-                                lambda1, lambda2,
-                                cha.kappa, mu, chb.kappa, mu)
+                                line.initialLevel.J, line.finalLevel.J,
+                                cha.kappa, cha.symmetry.J, chb.kappa, chb.symmetry.J,
+                                lambda2 - lambda1, settings.mValue)
 
-                            # PartW = W
+                            W = 0
+                            for mu in -1//2:1//2
+                                W += PhotoIonization.angularFunctionW(
+                                    theta,
+                                    cha.multipole.L, chb.multipole.L, X,
+                                    lambda1, lambda2,
+                                    cha.kappa, mu, chb.kappa, mu, ell1, ell2 )
+                            end
 
                             W = W * spinDensityMatrix(lambda1, lambda2, settings.stokes) * exp( 1.0im * (lambda1 - lambda2) * phi )
-                            W = W * (1.0im)^(chb.multipole.L - cha.multipole.L) * (lambda1*lambda2) / 2.
+                            W = W * (1.0im)^(chb.multipole.L - cha.multipole.L) * (lambda1*lambda2) / 2.0
                             W = W * AngularMomentum.phaseMultipole(1.0im*lambda1, cha.multipole)
                             W = W * AngularMomentum.phaseMultipole(-1.0im*lambda2, chb.multipole)
 
@@ -410,14 +509,14 @@ function computeDisplayNonE1AngleDifferentialCS(stream::IO, lines::Array{PhotoIo
                             if cha.gauge == Basics.Coulomb || chb.gauge == Basics.Coulomb
                                 csCoulomb += ( betaPart / sigmaBarC )
 
-                                if lambda1 * lambda2 == 1 && theta == phi == 0.
+                                if lambda1 * lambda2 == 1 && theta == 0.0 && phi == 0.0
                                     angCsParams[ key1 ][ 1 ] += ( betaPart / sigmaBarC )
                                 end
 
                             elseif cha.gauge == Basics.Babushkin || chb.gauge == Basics.Babushkin
                                 csBabushkin += ( betaPart / sigmaBarB )
 
-                                if lambda1 * lambda2 == 1 && theta == phi == 0.
+                                if lambda1 * lambda2 == 1 && theta == 0.0 && phi == 0.0
                                     angCsParams[ key1 ][ 2 ] += ( betaPart / sigmaBarB )
                                 end
                             end
@@ -426,7 +525,7 @@ function computeDisplayNonE1AngleDifferentialCS(stream::IO, lines::Array{PhotoIo
                 end
             end
 
-            if theta == phi == 0.0
+            if theta == 0.0 && phi == 0.0
                 angularParams[line.photonEnergy] = [
                     EmProperty(0.),   # Beta_1
                     EmProperty(0.),   # Gamma1
@@ -523,6 +622,168 @@ function computeDisplayNonE1AngleDifferentialCS(stream::IO, lines::Array{PhotoIo
 end
 
 
+# """
+# `PhotoIonization.computeNonE1AngleDifferentialCS(stream::IO, lines::Array{PhotoIonization.Line,1},
+#                                                         settings::PhotoIonization.Settings)`
+#     ... to compute & display the non-E1 angle-differential photoionization cross sections for all PhotoIonization.Line's
+#         and at all angles theta as defined in the settings. The general formula by Nishita Hosea (2025) is applied here.
+#         A neat table is printed for each line but nothing is returned otherwise.
+# """
+# function computeNonE1AngleDifferentialCS(stream::IO, lines::Array{PhotoIonization.Line,1}, settings::PhotoIonization.Settings)
+#     function spinDensityMatrix(lambda1::Int64, lambda2::Int64, stokes::ExpStokes)
+#         # Convert the Stokes parameters of the incoming light into a spin-density matrix on the indices lambda = +-1
+#         if      lambda1 == lambda2  == 1               return( (1.0 + stokes.P3)/2. )
+#         elseif  lambda1 ==  1   &&   lambda2  == -1    return( (stokes.P1 - stokes.P2*im)/2. )
+#         elseif  lambda1 == -1   &&   lambda2  ==  1    return( (stokes.P1 + stokes.P2*im)/2. )
+#         elseif  lambda1 == lambda2  == -1              return( (1.0 - stokes.P3)/2. )
+#         else    error("stop a")
+#         end
+#     end
+
+#     nx = 50
+#     # Define the 2x2 spins
+#     # Loop about all lines; a table is printed independently for each line
+#     for  line in lines
+#         angCS = Tuple{AngularJ64, Float64, Float64, ComplexF64, ComplexF64}[]  # finalLevel.J, theta, phi, angCs.Coulomb, angCs.Babushkin
+#         sigmaBarC = 0.
+#         sigmaBarB = 0.
+
+#         for  cha in line.channels
+#             # println( "Amplitude ", abs( cha.amplitude ) ^ 2, "gauge ", cha.gauge, "kappa ", cha.kappa )
+#             if  cha.gauge == Basics.Coulomb
+#                 sigmaBarC += abs( cha.amplitude ) ^ 2
+#             elseif  cha.gauge == Basics.Babushkin
+#                 sigmaBarB += abs( cha.amplitude ) ^ 2
+#             elseif cha.gauge == Basics.Magnetic
+#                 sigmaBarC += abs( cha.amplitude ) ^ 2
+#                 sigmaBarB += abs( cha.amplitude ) ^ 2
+#             end
+#         end
+
+#         angCsCoeff =  2. * pi^3 * 137.03599 / ( line.photonEnergy * ( Basics.twice(line.initialLevel.J) + 1 ) )
+
+#         # Loop over all angles theta, phi
+#         for theta in settings.thetas, phi in settings.phis
+#             csCoulomb = 1.;   csBabushkin = 1.
+#             angCsParams = Dict{Tuple, Vector{ComplexF64}}()
+#             for  X = 1:20  # Test for triangular conditions for X and continue otherwise
+#                 # Loop twice about all channels but distinguish the two gauges
+#                 for  cha in line.channels
+#                     for  chb in line.channels
+#                         if  cha.gauge == Basics.Coulomb  &&   chb.gauge == Basics.Babushkin   continue    end
+#                         if  chb.gauge == Basics.Coulomb  &&   cha.gauge == Basics.Babushkin   continue    end
+
+#                         s1 = Subshell(20,cha.kappa);   j1 = Basics.subshell_j(s1)
+#                         s2 = Subshell(20,chb.kappa);   j2 = Basics.subshell_j(s2)
+#                         s1_l   = Subshell( 101, cha.kappa )
+#                         ell1 = Basics.subshell_l( s1_l )
+#                         s1_2   = Subshell( 101, chb.kappa )
+#                         ell2 = Basics.subshell_l( s1_2 )
+
+#                         if  !AngularMomentum.isTriangle(cha.multipole.L, chb.multipole.L, X)                continue
+#                         elseif !AngularMomentum.isTriangle(cha.symmetry.J,  chb.symmetry.J, AngularJ64(X) ) continue
+#                         elseif !AngularMomentum.isTriangle(j1,  j2, AngularJ64(X) )                         continue
+#                         elseif mod( ell1 + ell2 + X, 2 ) != 0                                               continue
+#                         end
+
+#                         # Always use key1
+#                         key1 = (cha.multipole.L, chb.multipole.L, X, cha.multipole.electric, chb.multipole.electric)
+#                         key2 = (chb.multipole.L, cha.multipole.L, X, chb.multipole.electric, cha.multipole.electric)
+
+#                         # If both keys are not in the dict, then create Key1.
+#                         if !haskey( angCsParams, key1 ) && !haskey( angCsParams, key2 )
+#                             angCsParams[ key1 ] = [0.0 + 0.0im, 0.0 + 0.0im]
+#                         end
+
+#                         # If key2 is in dict, convert key1 to key2
+#                         if haskey( angCsParams, key2 )
+#                             key1 = key2
+#                         end
+
+#                         # Multiply by 2, because mu is fixed as 1//2
+#                         K = 2. * PhotoIonization.angularFunctionK(
+#                             cha.multipole.L, chb.multipole.L, X,
+#                             line.initialLevel.J, line.finalLevel.J,
+#                             cha.kappa, cha.symmetry.J, chb.kappa, chb.symmetry.J)
+
+#                         # Compute the summation over lambda's and mu's
+#                         mu = 1//2
+#                         for  lambda1 = -1:2:1,   lambda2 = -1:2:1
+#                             for mu in -1//2:1//2
+#                                 W = PhotoIonization.angularFunctionW(
+#                                     theta,
+#                                     cha.multipole.L, chb.multipole.L, X,
+#                                     lambda1, lambda2,
+#                                     cha.kappa, mu, chb.kappa, mu)
+#                             end
+
+#                             # PartW = W
+
+#                             W = W * spinDensityMatrix(lambda1, lambda2, settings.stokes) * exp( 1.0im * (lambda1 - lambda2) * phi )
+#                             W = W * (1.0im)^(chb.multipole.L - cha.multipole.L) * (lambda1*lambda2) / 2.
+#                             W = W * AngularMomentum.phaseMultipole(1.0im*lambda1, cha.multipole)
+#                             W = W * AngularMomentum.phaseMultipole(-1.0im*lambda2, chb.multipole)
+
+#                             betaPart  = K * W * cha.amplitude * conj( chb.amplitude )
+
+#                             if cha.gauge == Basics.Coulomb || chb.gauge == Basics.Coulomb
+#                                 csCoulomb += ( betaPart / sigmaBarC )
+
+#                                 if lambda1 * lambda2 == 1 && theta == phi == 0.
+#                                     angCsParams[ key1 ][ 1 ] += ( betaPart / sigmaBarC )
+#                                 end
+
+#                             elseif cha.gauge == Basics.Babushkin || chb.gauge == Basics.Babushkin
+#                                 csBabushkin += ( betaPart / sigmaBarB )
+
+#                                 if lambda1 * lambda2 == 1 && theta == phi == 0.
+#                                     angCsParams[ key1 ][ 2 ] += ( betaPart / sigmaBarB )
+#                                 end
+#                             end
+#                         end
+#                     end
+#                 end
+#             end
+
+#             if theta == phi == 0.0
+#                 for (key, value) in angCsParams
+#                     if key[1] == 1 && key[2] == 1 && key[3] == 2 && key[4] && key[5]
+#                         line.angularBeta1       = EmProperty( value[1].re * -2., value[2].re * -2. )
+
+#                     elseif key[1] == 1 && key[2] == 2 && key[3] == 1 && key[4] && key[5]
+#                         line.angularGamma1      = EmProperty( value[1].re, value[2].re )
+
+#                     elseif key[1] == 1 && key[2] == 2 && key[3] == 3 && key[4] && key[5]
+#                         line.angularGamma3      = EmProperty( value[1].re, value[2].re )
+
+#                     elseif key[1] == 2 && key[2] == 2 && key[3] == 2 && key[4] && key[5]
+#                         line.angularPi2         = EmProperty( value[1].re, value[2].re )
+
+#                     elseif key[1] == 2 && key[2] == 2 && key[3] == 4 && key[4] && key[5]
+#                         line.angularPi4         = EmProperty( value[1].re, value[2].re )
+
+#                     elseif key[1] == 1 && key[2] == 1 && key[3] == 1 && key[4] && !key[5]
+#                         line.angularDelta1      = EmProperty( value[1].re, value[2].re )
+
+#                     elseif key[1] == 1 && key[2] == 3 && key[3] == 2 && key[4] && key[5]
+#                         line.angularLambda2     = EmProperty( value[1].re, value[2].re )
+
+#                     elseif key[1] == 1 && key[2] == 3 && key[3] == 4 && key[4] && key[5]
+#                         line.angularLambda4     = EmProperty( value[1].re, value[2].re )
+
+#                     elseif key[1] == 1 && key[2] == 2 && key[3] == 2 && key[4] && !key[5]
+#                         line.angularUpsilon2    = EmProperty( value[1].re, value[2].re )
+
+#                     end
+#                 end
+#             end
+#         end
+#     end
+
+#     return( nothing )
+# end
+
+
 """
 `PhotoIonization.computeAmplitudesProperties(line::PhotoIonization.Line, nm::Nuclear.Model, grid::Radial.Grid, nrContinuum::Int64,
                                                     settings::PhotoIonization.Settings; printout::Bool=false)`
@@ -560,9 +821,6 @@ function  computeAmplitudesProperties(line::PhotoIonization.Line, nm::Nuclear.Mo
         end
     end
     Ji2 = Basics.twice(line.initialLevel.J)
-    ##x csFactor     = 4 * pi^2 * Defaults.getDefaults("alpha") * line.photonEnergy / (2*(Ji2 + 1))
-    ##x csFactor     = 4 * pi^2 * Defaults.getDefaults("alpha") / line.photonEnergy / (Ji2 + 1)
-    ##x csFactor     = 4 * pi^2 / Defaults.getDefaults("alpha") / line.photonEnergy / (Ji2 + 1)
     csFactor     = 8 * pi^3 / Defaults.getDefaults("alpha") / line.photonEnergy
     ##  csFactor     = csFactor / 2.   # Not fully clear, arises likely from the Rydberg normalization
     ##  Correct for energy normalization
@@ -578,7 +836,9 @@ function  computeAmplitudesProperties(line::PhotoIonization.Line, nm::Nuclear.Mo
     end
     #
     nLine = PhotoIonization.Line( line.initialLevel, line.finalLevel, line.electronEnergy, line.photonEnergy,
-                                    crossSection, angularBeta, coherentDelay, incoherentDelay, nChannels)
+                                    crossSection, angularBeta, EmProperty(0.), EmProperty(0.), EmProperty(0.), EmProperty(0.),
+                                    EmProperty(0.), EmProperty(0.), EmProperty(0.), EmProperty(0.), EmProperty(0.),
+                                    coherentDelay, incoherentDelay, nChannels)
 
     return( nLine )
 end
@@ -738,7 +998,6 @@ function  computeLinesCascade(finalMultiplet::Multiplet, initialMultiplet::Multi
         # Do not compute line if initial level is not in initialLevelSelection()
         ## @show Basics.selectLevel(line.initialLevel, initialLevelSelection), line.initialLevel.index
         if  !Basics.selectLevel(line.initialLevel, initialLevelSelection)   continue   ## @show "jump photoioization line";    continue
-        ##x else @show "jump to be calculated";    continue
         end
         #
         newLine = PhotoIonization.computeAmplitudesProperties(line, nm, grid, nrContinuum, settings, printout=printout)
@@ -988,7 +1247,6 @@ function determineChannels(finalLevel::Level, initialLevel::Level, settings::Pho
     if  Basics.UseCoulomb  in  settings.gauges   gaugeM = Basics.UseCoulomb    else   gaugeM = Basics.UseBabushkin    end
     for  mp in settings.multipoles
         symList = AngularMomentum.allowedMultipoleSymmetries(symi, mp)
-        ##x println("mp = $mp   symi = $symi   symList = $symList")
         for  symt in symList
             kappaList = AngularMomentum.allowedKappaSymmetries(symt, symf)
             for  kappa in kappaList
@@ -1030,7 +1288,9 @@ function  determineLines(finalMultiplet::Multiplet, initialMultiplet::Multiplet,
                     if  energy < 0.    continue   end
                     channels = PhotoIonization.determineChannels(fLevel, iLevel, settings)
                     push!( lines, PhotoIonization.Line(iLevel, fLevel, energy, omega_au, EmProperty(0.), EmProperty(0.),
-                                                        EmProperty(0.), EmProperty(0.), channels) )
+                                                        EmProperty(0.), EmProperty(0.), EmProperty(0.), EmProperty(0.),
+                                                        EmProperty(0.), EmProperty(0.), EmProperty(0.), EmProperty(0.),
+                                                        EmProperty(0.), EmProperty(0.), EmProperty(0.), channels) )
                 end
                 # Add lines for all electron energies
                 for  en in settings.electronEnergies
@@ -1040,7 +1300,9 @@ function  determineLines(finalMultiplet::Multiplet, initialMultiplet::Multiplet,
                     if  energy_au < 0.    continue   end
                     channels = PhotoIonization.determineChannels(fLevel, iLevel, settings)
                     push!( lines, PhotoIonization.Line(iLevel, fLevel, energy_au, omega, EmProperty(0.), EmProperty(0.),
-                                                        EmProperty(0.), EmProperty(0.), channels) )
+                                                        EmProperty(0.), EmProperty(0.), EmProperty(0.), EmProperty(0.),
+                                                        EmProperty(0.), EmProperty(0.), EmProperty(0.), EmProperty(0.),
+                                                        EmProperty(0.), EmProperty(0.), EmProperty(0.), channels) )
                 end
             end
         end
@@ -1170,7 +1432,6 @@ function  displayLines(stream::IO, lines::Array{PhotoIonization.Line,1})
                                                 line.channels[i].symmetry) )
             nchannels = nchannels + 1
         end
-        ##x println("PhotoIonization-diplayLines-ad: kappaMultipoleSymmetryList = ", kappaMultipoleSymmetryList)
         wa = TableStrings.kappaMultipoleSymmetryTupels(85, kappaMultipoleSymmetryList)
         sb = sa * wa[1];    println(stream,  sb )
         for  i = 2:length(wa)
@@ -1282,8 +1543,6 @@ function  displayResults(stream::IO, lines::Array{PhotoIonization.Line,1}, setti
         sa = sa * TableStrings.flushleft(11, mpString[1:10];  na=2)
         sa = sa * @sprintf("%.6e", Defaults.convertUnits("cross section: from atomic", wx * line.crossSection.Coulomb))     * "    "
         sa = sa * @sprintf("%.6e", Defaults.convertUnits("cross section: from atomic", wx * line.crossSection.Babushkin))   * "                 "
-        ##x sa = sa * @sprintf("%.6e", line.crossSection.Coulomb)     * "    "
-        ##x sa = sa * @sprintf("%.6e", line.crossSection.Babushkin)   * "    "
         println(stream, sa)
     end
     println(stream, "  ", TableStrings.hLine(nx))
@@ -1482,76 +1741,6 @@ function  displayResults(stream::IO, lines::Array{PhotoIonization.Line,1}, setti
     return( nothing )
 end
 
-#==
-"""
-`PhotoIonization.displayResultsDetailed(stream::IO, line::PhotoIonization.Line, settings::PhotoIonization.Settings)`
-    ... to list the detailed results, energies, etc. for the given line. A neat table is printed but nothing
-        is returned otherwise.
-"""
-function  displayResultsDetailed(stream::IO, line::PhotoIonization.Line, settings::PhotoIonization.Settings)
-    symi = LevelSymmetry(line.initialLevel.J, line.initialLevel.parity)
-    symf = LevelSymmetry(line.finalLevel.J, line.finalLevel.parity)
-    aeffC = ComplexF64(0.);     aeffB = ComplexF64(0.);
-    beffC = Float64(0.);        beffB = Float64(0.);       deffC = Float64(0.);     deffB = Float64(0.)
-    for  channel in line.channels
-        if      channel.gauge == Basics.Coulomb     aeffC = aeffC + channel.amplitude
-                                                    beffC = beffC + abs(channel.amplitude)^2
-                                                    deffC = deffC + abs(channel.amplitude)^2 * atan(channel.amplitude.im, channel.amplitude.re)
-                                                    ## deffC = deffC + abs(channel.amplitude)^2 * angle(channel.amplitude)
-        elseif  channel.gauge == Basics.Babushkin   aeffB = aeffB + channel.amplitude
-                                                    beffB = beffB + abs(channel.amplitude)^2
-                                                    deffB = deffB + abs(channel.amplitude)^2 * atan(channel.amplitude.im, channel.amplitude.re)
-                                                    ## deffB = deffB + abs(channel.amplitude)^2 * angle(channel.amplitude)
-        else
-        end
-    end
-    deffC = deffC / beffC;    deffB = deffB / beffB
-    #
-    sa   = "\n  Results for PI line from the transition  $(line.initialLevel.index) -  $(line.finalLevel.index):  " *
-            "  $symi  - $symf "
-
-    println(stream, sa, "\n  ", TableStrings.hLine(length(sa)-3))
-    println(stream, "\n  Photon energy               = " * @sprintf("%.4e", Defaults.convertUnits("energy: from atomic", line.photonEnergy)) *
-                        "  " * TableStrings.inUnits("energy") )
-    println(stream,   "  Electron energy             = " * @sprintf("%.4e", Defaults.convertUnits("energy: from atomic", line.electronEnergy)) *
-                        "  " * TableStrings.inUnits("energy") )
-    println(stream,   "  Total cross section         = " * @sprintf("%.4e", Defaults.convertUnits("cross section: from atomic", line.crossSection.Coulomb)) *
-                        "  " * TableStrings.inUnits("cross section") * " (Coulomb gauge)" )
-    println(stream,   "                                " * @sprintf("%.4e", Defaults.convertUnits("cross section: from atomic", line.crossSection.Babushkin)) *
-                        "  " * TableStrings.inUnits("cross section") * " (Babushkin gauge)" )
-    println(stream,   "  A^eff (Re, Im, abs, phi)    = " * @sprintf("%.4e", aeffC.re)   * "   " * @sprintf("%.4e", aeffC.im) * "   " *
-                                                            @sprintf("%.4e", abs(aeffC)) * "   " * @sprintf("%.4e", angle(aeffC)) * "  (Coulomb gauge)" )
-    println(stream,   "                              = " * @sprintf("%.4e", aeffB.re)   * "   " * @sprintf("%.4e", aeffB.im) * "   " *
-                                                            @sprintf("%.4e", abs(aeffB)) * "   " * @sprintf("%.4e", angle(aeffB)) * "  (Babushkin gauge)" )
-    println(stream,   "  A^r_eff, del_eff (non-coh)  = " * @sprintf("%.4e", sqrt(beffC))* "   " * @sprintf("%.4e", deffC)        * "  (Coulomb gauge)" )
-    println(stream,   "                              = " * @sprintf("%.4e", sqrt(beffB))* "   " * @sprintf("%.4e", deffB)        * "  (Babushkin gauge)" )
-    println(stream,   "  A^r_eff, del_eff (coherent) = " * @sprintf("%.4e", abs(aeffC)) * "   " * @sprintf("%.4e", atan(aeffC.im, aeffC.re)) * "  (Coulomb gauge)" )
-    println(stream,   "                              = " * @sprintf("%.4e", abs(aeffB)) * "   " * @sprintf("%.4e", atan(aeffB.im, aeffB.re)) * "  (Babushkin gauge)" )
-    println(stream, "\n  Kappa    Total J^P  Mp     Gauge               Amplitude          Real-Amplitude  Cross section (b)   Phase    atan()" *
-                    "\n  " * TableStrings.hLine(112) )
-
-    for  channel in line.channels
-        Ji2 = Basics.twice(line.initialLevel.J)
-        csFactor = 4 * pi^3 / Defaults.getDefaults("alpha") / line.photonEnergy
-        # csFactor     = 4 * pi^2 * Defaults.getDefaults("alpha") * line.photonEnergy / (2*(Ji2 + 1))
-        cs = csFactor * abs(channel.amplitude)^2
-        sg = string(channel.gauge) * "      "
-        sk = "    " * string(channel.kappa)
-        sb = "    " * @sprintf("%.4e", channel.amplitude.re)
-        sc = "    " * @sprintf("%.4e", channel.amplitude.im)
-        sp = "    " * @sprintf("%.4e", channel.phase)
-        sx = "    " * @sprintf("%.4e", atan(channel.amplitude.im, channel.amplitude.re) )
-        sa = " " * sk[end-3:end] * "          " * string(channel.symmetry) * "    " * string(channel.multipole) * "     " * sg[1:11] *
-                sb[end-12:end] * sc[end-12:end] * "    " * @sprintf("%.4e", abs(channel.amplitude)) *
-                "       " * @sprintf("%.4e", Defaults.convertUnits("cross section: from atomic", cs)) * "   " * sp[end-12:end] *
-                "       " * sx[end-12:end]
-        println(stream, sa)
-    end
-
-    return( nothing )
-end   ==#
-
-
 
 """
 `PhotoIonization.extractPhotonEnergies(lines::Array{PhotoIonization.Line,1})`
@@ -1612,11 +1801,8 @@ function  extractCrossSection(lines::Array{PhotoIonization.Line,1}, omega::Float
         if  line.initialLevel.index == initialLevel.index  &&  line.initialLevel.energy == initialLevel.energy  &&
             line.photonEnergy       == omega
             # Now determined of whether the photoionization refers to the given shell
-            ##x confi     = Basics.extractLeadingConfiguration(line.initialLevel)
-            ##x conff     = Basics.extractLeadingConfiguration(line.finalLevel)
             confi     = Basics.extractConfiguration(Basics.LeadingConfiguration(), line.initialLevel)
             conff     = Basics.extractConfiguration(Basics.LeadingConfiguration(), line.finalLevel)
-            ##x shellOccs = Basics.extractShellOccupationDifference(confi::Configuration, conff::Configuration)
             shellOccs = Basics.extractFromConfigurations(Basics.OccupationDifference(), confi, conff)
             if  length(shellOccs) > 1  ||  shellOccs[1][2] < 0      error("stop a")   end
             if  shellOccs[1][1] == shell   cs = cs + line.crossSection      end

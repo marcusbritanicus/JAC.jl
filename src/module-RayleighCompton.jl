@@ -44,7 +44,41 @@ end
 `RayleighCompton.Settings()`  ... constructor for the default values of Rayleigh-Compton photon-scattering estimates.
 """
 function Settings()
-    Settings(EmMultipole[], UseGauge[], GreenChannel[], 0., false, false, false, false, ExpStokes(), SolidAngle[], LineSelection() )
+    Settings(EmMultipole[], UseGauge[], Float64[], GreenChannel[], false, false, false, false, ExpStokes(), SolidAngle[], LineSelection() )
+end
+
+
+"""
+`RayleighCompton.Settings(set::RayleighCompton.Settings;`
+
+        multipoles=.., gauges=.., photonEnergies=.., green=.., calcRayleighRaman=.., calcAngular=..,
+        calcStokes=.., printBefore=.., incidentStokes=.., solidAngles=.., lineSelection=..)
+
+    ... keyword copy-constructor for re-defining selected values of a settings::RayleighCompton.Settings.
+"""
+function Settings(set::RayleighCompton.Settings;
+        multipoles::Union{Nothing,Array{EmMultipole}}=nothing,
+        gauges::Union{Nothing,Array{UseGauge}}=nothing,
+        photonEnergies::Union{Nothing,Array{Float64,1}}=nothing,
+        green::Union{Nothing,Array{AtomicState.GreenChannel,1}}=nothing,
+        calcRayleighRaman::Union{Nothing,Bool}=nothing,    calcAngular::Union{Nothing,Bool}=nothing,
+        calcStokes::Union{Nothing,Bool}=nothing,           printBefore::Union{Nothing,Bool}=nothing,
+        incidentStokes::Union{Nothing,ExpStokes}=nothing,  solidAngles::Union{Nothing,Array{SolidAngle,1}}=nothing,
+        lineSelection::Union{Nothing,LineSelection}=nothing)
+    if  isnothing(multipoles)          multipolesx        = set.multipoles         else   multipolesx        = multipoles         end
+    if  isnothing(gauges)              gaugesx            = set.gauges             else   gaugesx            = gauges             end
+    if  isnothing(photonEnergies)      photonEnergiesx    = set.photonEnergies     else   photonEnergiesx    = photonEnergies     end
+    if  isnothing(green)               greenx             = set.green              else   greenx             = green              end
+    if  isnothing(calcRayleighRaman)   calcRayleighRamanx = set.calcRayleighRaman  else   calcRayleighRamanx = calcRayleighRaman  end
+    if  isnothing(calcAngular)         calcAngularx       = set.calcAngular        else   calcAngularx       = calcAngular        end
+    if  isnothing(calcStokes)          calcStokesx        = set.calcStokes         else   calcStokesx        = calcStokes         end
+    if  isnothing(printBefore)         printBeforex       = set.printBefore        else   printBeforex       = printBefore        end
+    if  isnothing(incidentStokes)      incidentStokesx    = set.incidentStokes     else   incidentStokesx    = incidentStokes     end
+    if  isnothing(solidAngles)         solidAnglesx       = set.solidAngles        else   solidAnglesx       = solidAngles        end
+    if  isnothing(lineSelection)       lineSelectionx     = set.lineSelection      else   lineSelectionx     = lineSelection      end
+
+    Settings( multipolesx, gaugesx, photonEnergiesx, greenx, calcRayleighRamanx,
+              calcAngularx, calcStokesx, printBeforex, incidentStokesx, solidAnglesx, lineSelectionx )
 end
 
 
@@ -269,7 +303,6 @@ function  computeChannelAmplitude(channel::RayleighCompton.Channel, finalLevel::
     # Analyse of whether there is a sign change in the denominator for the current and next function
     hasPole = false;    leftIdx = -99
     for  (ig, gLevel)  in  enumerate(gChannel.gMultiplet.levels)
-        ##x if channel.isS12    @show channel.isS12, ig, gLevel.energy, initialLevel.energy - gLevel.energy - channel.omega2   end
         if   ig == 1   continue
         elseif   channel.isS12   &&    sign(initialLevel.energy - gChannel.gMultiplet.levels[ig-1].energy - channel.omega2)  !=  
                                        sign(initialLevel.energy - gLevel.energy - channel.omega2)  
@@ -308,8 +341,8 @@ function  computeChannelAmplitude(channel::RayleighCompton.Channel, finalLevel::
     for  (ig, gLevel)  in  enumerate(gChannel.gMultiplet.levels)
         if   ig != 1   continue   end
         if   channel.isS12  # for S_12
-            leftMe  = PhotoEmission.amplitude("absorption", channel.multipole1, channel.gauge, channel.omega1, finalLevel, gLevel, grid, display=false)
-            rightMe = PhotoEmission.amplitude("absorption", channel.multipole2, channel.gauge, channel.omega2, gLevel, initialLevel, grid, display=false)
+            leftMe  = PhotoEmission.amplitude(Absorption(), channel.multipole1, channel.gauge, channel.omega1, finalLevel, gLevel, grid, display=false)
+            rightMe = PhotoEmission.amplitude(Absorption(), channel.multipole2, channel.gauge, channel.omega2, gLevel, initialLevel, grid, display=false)
             #
             if        ig == leftIdx     lowerNom = leftMe * rightMe;   lowerDenom = (initialLevel.energy - gLevel.energy - channel.omega2);   me = 0.0im  
             elseif    ig == leftIdx+1   upperNom = leftMe * rightMe;   upperDenom = (initialLevel.energy - gLevel.energy - channel.omega2);   me = 0.0im 
@@ -317,8 +350,8 @@ function  computeChannelAmplitude(channel::RayleighCompton.Channel, finalLevel::
                                         denominator = (initialLevel.energy - gLevel.energy - channel.omega2)
             end
         else 
-            leftMe  = PhotoEmission.amplitude("absorption", channel.multipole2, channel.gauge, channel.omega2, finalLevel, gLevel, grid, display=false)
-            rightMe = PhotoEmission.amplitude("absorption", channel.multipole1, channel.gauge, channel.omega1, gLevel, initialLevel, grid, display=false)
+            leftMe  = PhotoEmission.amplitude(Absorption(), channel.multipole2, channel.gauge, channel.omega2, finalLevel, gLevel, grid, display=false)
+            rightMe = PhotoEmission.amplitude(Absorption(), channel.multipole1, channel.gauge, channel.omega1, gLevel, initialLevel, grid, display=false)
             #
             if        ig == leftIdx     lowerNom = leftMe * rightMe;   lowerDenom = (initialLevel.energy - gLevel.energy + channel.omega1);   me = 0.0im  
             elseif    ig == leftIdx+1   upperNom = leftMe * rightMe;   upperDenom = (initialLevel.energy - gLevel.energy + channel.omega1);   me = 0.0im 
@@ -360,7 +393,6 @@ function determineChannels(finalLevel::Level, initialLevel::Level, inOmega::Floa
                     elseif (string(mp1)[1] == 'E' || string(mp2)[1] == 'E')  &&   gauge == Basics.UseBabushkin    
                         push!(channels, Channel(true,  symn, mp1, mp2, Basics.Babushkin, inOmega, outOmega, ComplexF64(0.)) ) 
                         push!(channels, Channel(false, symn, mp1, mp2, Basics.Babushkin, inOmega, outOmega, ComplexF64(0.)) ) 
-                        ##x @show  gauge, Channel(true,  symn, mp1, mp2, Basics.Babushkin, inOmega, outOmega, ComplexF64(0.))
                     elseif string(mp1)[1] == 'M' && string(mp2)[1] == 'M'
                         push!(channels, Channel(true,  symn, mp1, mp2, Basics.Magnetic,  inOmega, outOmega, ComplexF64(0.)) ) 
                         push!(channels, Channel(false, symn, mp1, mp2, Basics.Magnetic,  inOmega, outOmega, ComplexF64(0.)) ) 

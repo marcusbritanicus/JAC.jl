@@ -19,7 +19,6 @@ using  Printf, ..AngularMomentum, ..Basics,  ..Defaults, ..ManyElectron, ..Radia
 
 export  Xronecker
 
-
 """
 `abstract type SpinAngular.AbstractAngularType` 
     ... defines an abstract type and a number of data types to work with one- and two-particle operators of given rank, see also:
@@ -28,7 +27,6 @@ export  Xronecker
     + struct TwoParticleOperator    ... to represent a two-particle operator with well-defined spherical tensor rank.
 """
 abstract type  AbstractAngularType                           end
-
 
 """
 `struct  SpinAngular.OneParticleOperator  <:  AbstractAngularType`  
@@ -44,14 +42,12 @@ struct  OneParticleOperator  <:  AbstractAngularType
     sameOrbitalSet    ::Bool
 end
 
-
 """
 `SpinAngular.OneParticleOperator()`  ... constructor for setting the default values.
 """
 function OneParticleOperator()
     OneParticleOperator( 0, Basics.plus, false)
 end
-
 
 # `Base.show(io::IO, op::OneParticleOperator)`  ... prepares a proper printout of the op::OneParticleOperator.
 function Base.show(io::IO, op::OneParticleOperator)
@@ -61,7 +57,6 @@ function Base.show(io::IO, op::OneParticleOperator)
         end
         println(io, sa)
 end
-
 
 """
 `struct  SpinAngular.TwoParticleOperator`  
@@ -77,14 +72,12 @@ struct  TwoParticleOperator
     sameOrbitalSet    ::Bool
 end
 
-
 """
 `SpinAngular.TwoParticleOperator()`  ... constructor for setting the default values.
 """
 function TwoParticleOperator()
     TwoParticleOperator( 0, Basics.plus, false)
 end
-
 
 # `Base.show(io::IO, op::TwoParticleOperator)`  ... prepares a proper printout of the op::TwoParticleOperator.
 function Base.show(io::IO, op::TwoParticleOperator)
@@ -94,7 +87,6 @@ function Base.show(io::IO, op::TwoParticleOperator)
         end
         println(io, sa)
 end
-
 
 """
 `struct  SpinAngular.Coefficient1p`  
@@ -112,14 +104,12 @@ struct  Coefficient1p
     T          ::Float64
 end
 
-
 # `Base.show(io::IO, coeff::Coefficient1p)`  ... prepares a proper printout of the coeff::Coefficient1p.
 function Base.show(io::IO, coeff::Coefficient1p)
     # sa = "\n V^($(coeff.L)) [$(coeff.a), $(coeff.b)] = $(coeff.v)"
     sa = "   T^$(coeff.nu) [$(coeff.a), $(coeff.b)] = $(coeff.T)"
     print(io, sa)
 end
-
 
 """
 `struct  SpinAngular.Coefficient2p`  
@@ -141,7 +131,6 @@ struct  Coefficient2p
     d          ::Subshell  
     V          ::Float64
 end
-
 
 """
 `struct  SpinAngular.QspaceTerm`  
@@ -167,7 +156,6 @@ struct  QspaceTerm
     max_even   ::Int64
 end
 
-
 # `Base.show(io::IO, term::QspaceTerm)`  ... prepares a proper printout of term::QspaceTerm.
 function Base.show(io::IO, term::QspaceTerm)
     if  term.Nr == 0   
@@ -180,13 +168,11 @@ function Base.show(io::IO, term::QspaceTerm)
     println(io, sa)
 end
 
-
 # `Base.show(io::IO, coeff::Coefficient2p)`  ... prepares a proper printout of the coeff::Coefficient2p.
 function Base.show(io::IO, coeff::Coefficient2p)
     sa = "\n V^($(coeff.nu)) [$(coeff.a), $(coeff.b)| $(coeff.c), $(coeff.d)] = $(coeff.V)"
     print(io, sa)
 end
-
 
 """
 `struct  SpinAngular.SchemeEta`  
@@ -205,7 +191,6 @@ struct  SchemeEta_aW   end
 struct  SchemeEta_Wa   end
 struct  SchemeEta_WW   end
 
-
 """
 `struct  SpinAngular.Diagram`  
     ... to defines various singleton() structs in order to distinguish between different coupling schemes of the 
@@ -217,68 +202,13 @@ struct  DiagramC03   end
 struct  DiagramC04   end
 struct  DiagramC05   end
 
-
-#======= This can likely be deleted soon.
-"""
-`struct  SpinAngular.SubshellTerm`  
-    ... a struct for defining a subshell term/state  |j^N (nu) alpha Q J> == |j^N (nu) Q J Nr> for a subshell with well-defined j.
-
-    + j          ::AngularJ64      ... subshell j
-    + Q          ::AngularJ64      ... quasi-spin
-    + occupation ::Int64           ... occupation N
-    + seniority  ::Int64           ... seniority
-    + J          ::AngularJ64      ... total J of subshell term
-    + Nr         ::Int64           ... Additional quantum number Nr = 0,1,2.
-"""
-struct  SubshellTerm
-    j            ::AngularJ64
-    Q            ::AngularJ64
-    occupation   ::Int64
-    seniority    ::Int64
-    J            ::AngularJ64
-    Nr           ::Int64
-end
-
-
-# `Base.show(io::IO, term::SubshellTerm)`  ... prepares a proper printout of term::SubshellTerm.
-function Base.show(io::IO, term::SubshellTerm)
-    if  term.Nr == 0   sa = "|$(term.j)^($(term.occupation)) ($(term.seniority)) $(term.Q) $(term.J)>"
-    else               sa = "|$(term.j)^($(term.occupation)) ($(term.seniority)) $(term.Q) $(term.J); Nr=$(term.Nr)>"
-    end
-    println(io, sa)
-end
-
-
-"""
-`struct  SpinAngular.Lambda`  
-    ... a struct for defining a subshell term/state  |j (nu) alpha Q J> == |j (nu) Q J Nr> for a subshell with well-defined j.
-
-    + Ji         ::AngularJ64      ... J_i
-    + Jj         ::AngularJ64      ... J_j
-    + Jip        ::AngularJ64      ... J_i'
-    + Jjp        ::AngularJ64      ... J_j'
-"""
-struct  Lambda
-    Ji           ::AngularJ64
-    Jj           ::AngularJ64
-    Jip          ::AngularJ64
-    Jjp          ::AngularJ64
-end
-
-
-# `Base.show(io::IO, lambda::Lambda)`  ... prepares a proper printout of lambda::Lambda.
-function Base.show(io::IO, lambda::Lambda)
-    sa = "Lambda($(lambda.Ji), $(lambda.Jj); lambda.Jip), $(lambda.Jjp))"
-    println(io, sa)
-end     ==================#
+## Sentinel type for the ordered-shells overload of recoupling2p; distinguishes it from the unordered overload.
+struct  Ordered2p    end
 
 include("module-SpinAngular-inc-reducedcoeffs.jl")
 
-
-
 #######################################################################################################################
 #######################################################################################################################
-
 
 """
 `SpinAngular.computeCoefficients(op::SpinAngular.OneParticleOperator, leftCsf::CsfR, rightCsf::CsfR, subshells::Array{Subshell,1})`  
@@ -300,7 +230,6 @@ function  computeCoefficients(op::SpinAngular.OneParticleOperator, leftCsf::CsfR
     return (coeffs)
 end
 
-
 """
 `SpinAngular.computeCoefficients(op::SpinAngular.TwoParticleOperator, leftCsf::CsfR, rightCsf::CsfR, subshells::Array{Subshell,1})`  
     ... computes the spin-angular coefficients for the reduced two-particle matrix element
@@ -319,7 +248,6 @@ function  computeCoefficients(op::SpinAngular.TwoParticleOperator, leftCsf::CsfR
     
     return (coeffs)
 end
-
 
 """
 `SpinAngular.computeCoefficientsNonScalar(op::SpinAngular.OneParticleOperator, leftCsf::CsfR, rightCsf::CsfR, subshells::Array{Subshell,1})`  
@@ -422,7 +350,6 @@ function  computeCoefficientsNonScalar(op::SpinAngular.OneParticleOperator, left
     return( coeffs1p )
 end
 
-
 """
 `SpinAngular.computeCoefficientsScalar(op::SpinAngular.OneParticleOperator, leftCsf::CsfR, rightCsf::CsfR, subshells::Array{Subshell,1})`  
     ... computes the spin-angular coefficients for the reduced (scalar) one-particle matrix element
@@ -522,7 +449,6 @@ function  computeCoefficientsScalar(op::SpinAngular.OneParticleOperator, leftCsf
     return( coeffs1p )
 end
 
-
 """
 `SpinAngular.computeCoefficientsScalar(op::SpinAngular.TwoParticleOperator, leftCsf::CsfR, rightCsf::CsfR, subshells::Array{Subshell,1})`  
     ... computes the spin-angular coefficients for the reduced (scalar) two-particle matrix element
@@ -578,7 +504,6 @@ function  computeCoefficientsScalar(op::SpinAngular.TwoParticleOperator, leftCsf
     return( coeffs2p )
 end
 
-
 """
 `SpinAngular.irreducibleTensor(eta::SchemeEta_a, aIndex::Int64, aN::Int64, mq::AngularM64, bIndex::Int64, bN::Int64)`  
     ... computes the submatrix elements
@@ -618,7 +543,6 @@ function  irreducibleTensor(eta::SchemeEta_a, aIndex::Int64, aN::Int64, mq::Angu
     end
     return( wa )
 end
-
 
 """
 `SpinAngular.irreducibleTensor(eta::SchemeEta_W, aIndex::Int64, aN::Int64, mLeft::AngularM64, mRight::AngularM64, kj::Int64, 
@@ -715,7 +639,6 @@ function  irreducibleTensor(eta::SchemeEta_W, aIndex::Int64, aN::Int64, mLeft::A
     return( wa )
 end
 
-
 """
 `SpinAngular.irreducibleTensor(eta::SchemeEta_WW, aIndex::Int64, aN::Int64, mLeft1::AngularM64, mRight1::AngularM64, 
                                 mLeft2::AngularM64, mRight2::AngularM64, kj::Int64, bIndex::Int64, bN::Int64)`  
@@ -790,7 +713,6 @@ function  irreducibleTensor(eta::SchemeEta_WW, aIndex::Int64, aN::Int64, mLeft1:
     end
     return( wa )
 end
-
 
 """
 `SpinAngular.irreducibleTensor(eta::SchemeEta_aW,aIndex::Int64, aN::Int64, mLeft1::AngularM64, mLeft2::AngularM64, 
@@ -868,7 +790,6 @@ function  irreducibleTensor(eta::SchemeEta_aW,aIndex::Int64, aN::Int64, mLeft1::
     return( wa )
 end
 
-
 """
 `SpinAngular.irreducibleTensor(eta::SchemeEta_Wa, aIndex::Int64, aN::Int64, mLeft1::AngularM64, mRight1::AngularM64,  
                                 mLeft2::AngularM64, kj1::Int64, kj::AngularJ64, bIndex::Int64, bN::Int64)`  
@@ -945,7 +866,6 @@ function  irreducibleTensor(eta::SchemeEta_Wa, aIndex::Int64, aN::Int64, mLeft1:
     return( wa )
 end
 
-
 """
 `SpinAngular.normalForm(ia::Int64, ib::Int64, ic::Int64)`
     ... odering operators of second quantisation in norma form; a value::Int64 is returned.
@@ -965,7 +885,6 @@ function normalForm(ia::Int64, ib::Int64, ic::Int64)
     return( wa )
 end
 
-
 """
 `SpinAngular.normalPhase(ia::Int64, ib::Int64, ic::Int64, id::Int64)`
     ... compute the phase factor from odering operators of second quantisation in norma form; a wa::Int64 is returned.
@@ -983,7 +902,6 @@ function normalPhase(ia::Int64, ib::Int64, ic::Int64, id::Int64)
     return( wa )
 end
 
-
 """
 `SpinAngular.qshellTermM(j::AngularJ64, N::Int64)`  
     ... computes MQ quantum number; an M::Int64 is returned.
@@ -995,7 +913,6 @@ function  qshellTermM(j::AngularJ64, N::Int64)
     M = Int64(N-0.5*(Basics.twice(j)+1));  return( AngularM64(M//2) )
 end
 
-
 """
 `SpinAngular.qshellTermQ(j::AngularJ64, nu::Int64)`  
     ... computes Q quantum number; a Q::Int64 is returned.
@@ -1006,7 +923,6 @@ end
 function  qshellTermQ(j::AngularJ64, nu::Int64)
     Q = Int64((Basics.twice(j)+1)*0.5-nu);  return( AngularJ64(Q//2) )
 end
-
 
 """
 `SpinAngular.qspacedelta(q::AngularJ64, mq::AngularM64)`  
@@ -1020,7 +936,6 @@ function  qspacedelta(q::AngularJ64, mq::AngularM64)
     if (-1)^Int64(Basics.twice(q) + Basics.twice(mq)) == -1 return( 0 )  end
     return( 1 )
 end
-
 
 """
 `SpinAngular.recouplingDiagram(diagram::DiagramC01,leftCsf::CsfR, rightCsf::CsfR, rank::AngularJ64, ia::Int64)`  
@@ -1053,7 +968,6 @@ function recouplingDiagram(diagram::DiagramC01,leftCsf::CsfR, rightCsf::CsfR, ra
     return( wa )
 end
 
-
 """
 `SpinAngular.recouplingDiagram(diagram::DiagramC02, leftCsf::CsfR, rightCsf::CsfR, rank::AngularJ64, ia::Int64, ib::Int64)`  
     ... computes the coefficient C_2 from the paper of G. Gaigalas et al., 1997 J. Phys. B: At. Mol. Opt. Phys, 
@@ -1085,7 +999,6 @@ function recouplingDiagram(diagram::DiagramC02, leftCsf::CsfR, rightCsf::CsfR, r
     return( wa )
 end
 
-
 """
 `SpinAngular.recouplingDiagram(diagram::DiagramC03, leftCsf::CsfR, rightCsf::CsfR, rank::AngularJ64, ia::Int64, nwshells::Int64)`
     ... computes the coefficient C_3 from the paper of G. Gaigalas et al., 1997 J. Phys. B: At. Mol. Opt. Phys, 
@@ -1112,7 +1025,6 @@ function recouplingDiagram(diagram::DiagramC03, leftCsf::CsfR, rightCsf::CsfR, r
     wa = (-1)^Int64((Basics.twice(T_r)+Basics.twice(T_s)-Basics.twice(T1_s)-Basics.twice(T1_r)+Basics.twice(JI)*2)/2) * wa
     return( wa )
 end
-
 
 """
 `SpinAngular.recouplingDiagram(diagram::DiagramC04, leftCsf::CsfR, rightCsf::CsfR, rank_1::AngularJ64, rank_2::AngularJ64, 
@@ -1141,7 +1053,6 @@ function recouplingDiagram(diagram::DiagramC04, leftCsf::CsfR, rightCsf::CsfR, r
     return( wa )
 end
 
-
 """
 `SpinAngular.recouplingDiagram(diagram::DiagramC05, leftCsf::CsfR, rightCsf::CsfR, rank::AngularJ64, ia::Int64, ib::Int64)`  
     ... computes the coefficient C_5 from the paper of G. Gaigalas et al., 1997 J. Phys. B: At. Mol. Opt. Phys, 
@@ -1165,7 +1076,6 @@ function recouplingDiagram(diagram::DiagramC05, leftCsf::CsfR, rightCsf::CsfR, r
     wa = (-1)^Int64((Basics.twice(csf_X_2)+Basics.twice(csf_s_J)+Basics.twice(csf_r_J_2)+Basics.twice(rank))/2) * wa
     return( wa )
 end
-
 
 """
 `SpinAngular.recouplingCheck(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, ib::Int64, ic::Int64, id::Int64, 
@@ -1228,7 +1138,6 @@ function recouplingCheck(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, ib::Int64, ic
     return( wa )
 end
 
-
 """
 `SpinAngular.recouplingCheck(leftCsf::CsfR, rightCsf::CsfR, rank::AngularJ64, ia::Int64, ib::Int64, nwshells::Int64)`  
     ... checks the angular momentum selection rules for the recoupling coefficients in the cases of one, 
@@ -1266,7 +1175,6 @@ function recouplingCheck(leftCsf::CsfR, rightCsf::CsfR, rank::AngularJ64, ia::In
     return( wa )
 end
 
-
 """
 `SpinAngular.recoupling1p(leftCsf::CsfR, rightCsf::CsfR, rank::AngularJ64, ia:Int64, nwshells::Int64)`
     ... computes the recoupling matrix R(ja, jb, Lambda^bra, Lambda^ket) for a non scalar operator in the case 
@@ -1293,7 +1201,6 @@ function  recoupling1p(leftCsf::CsfR, rightCsf::CsfR, rank::AngularJ64, ia::Int6
     wa = wa * recouplingDiagram(DiagramC02(), leftCsf, rightCsf, rank, ia, nwshells)
     return( wa )
 end
-
 
 """
 `SpinAngular.recoupling1p(leftCsf::CsfR, rightCsf::CsfR, rank_1::AngularJ64, rank_2::AngularJ64, 
@@ -1334,7 +1241,6 @@ function  recoupling1p(leftCsf::CsfR, rightCsf::CsfR, rank_1::AngularJ64, rank_2
     return( wa )
 end
 
-
 """
 `SpinAngular.recoupling2p(leftCsf::CsfR, rightCsf::CsfR, rank::AngularJ64, ia:Int64, ib:Int64)`  
     ... computes the recoupling matrix R(ja, jb, Lambda^bra, Lambda^ket) for a scalar operator in the case of two 
@@ -1365,12 +1271,11 @@ function  recoupling2p(leftCsf::CsfR, rightCsf::CsfR, rank::AngularJ64, ia::Int6
     return( wa )
 end
 
-
 """
 `SpinAngular.recoupling2p(leftCsf::CsfR, rightCsf::CsfR, rank1::AngularJ64, rank2::AngularJ64, rank3::AngularJ64, 
                             ia:Int64, ib:Int64, ic::Int64)`  
     ... computes the recoupling matrix R(ja, jb, Lambda^bra, Lambda^ket) for a scalar operator in the case of three 
-        interacting shells  (shells are not odered). See G. Gaigalas et al., 1997 J. Phys. B: At. Mol. Opt. Phys, 
+        interacting shells  (shells are not ordered). See G. Gaigalas et al., 1997 J. Phys. B: At. Mol. Opt. Phys,
         Vol 30 3747, Eq. (26) (p. 3756); a value::Float64 is returned.
 
         leftCsf  - is the bra confuguration state function in relativistic notation;
@@ -1386,22 +1291,22 @@ function  recoupling2p(leftCsf::CsfR, rightCsf::CsfR, rank1::AngularJ64,  rank2:
                         ia::Int64, ib::Int64, ic::Int64) 
     wa = 0.0
     if ic > ia  && ic > ib
-        if      ia < ib     wa = recoupling2p("odered", leftCsf, rightCsf, rank1, rank2, rank3, ia, ib, ic)
-        elseif  ia > ib     wa = recoupling2p("odered", leftCsf, rightCsf, rank2, rank1, rank3, ib, ia, ic)
+        if      ia < ib     wa = recoupling2p(Ordered2p(), leftCsf, rightCsf, rank1, rank2, rank3, ia, ib, ic)
+        elseif  ia > ib     wa = recoupling2p(Ordered2p(), leftCsf, rightCsf, rank2, rank1, rank3, ib, ia, ic)
                             wa = (-1)^Int64((Basics.twice(rank1)+Basics.twice(rank2)-Basics.twice(rank3))/2) * wa
         else                error("Recoupling_matrix_3_shells(): program stop A.")    
         end
     elseif ic < ia  && ic < ib
-        if      ia < ib     wa = recoupling2p("odered", leftCsf, rightCsf, rank3, rank1, rank2, ic, ia, ib)
+        if      ia < ib     wa = recoupling2p(Ordered2p(), leftCsf, rightCsf, rank3, rank1, rank2, ic, ia, ib)
                             wa = (-1)^Int64(Basics.twice(rank3)) * wa
-        elseif  ia > ib     wa = recoupling2p("odered", leftCsf, rightCsf, rank3, rank2, rank1, ic, ib, ia)
+        elseif  ia > ib     wa = recoupling2p(Ordered2p(), leftCsf, rightCsf, rank3, rank2, rank1, ic, ib, ia)
                             wa = (-1)^Int64((Basics.twice(rank1)+Basics.twice(rank2)+Basics.twice(rank3))/2) * wa
         else                error("Recoupling_matrix_3_shells(): program stop B.")
         end
     else
-        if      ia < ib     wa = recoupling2p("odered", leftCsf, rightCsf, rank1, rank3, rank2, ia, ic, ib)
+        if      ia < ib     wa = recoupling2p(Ordered2p(), leftCsf, rightCsf, rank1, rank3, rank2, ia, ic, ib)
                             wa = (-1)^Int64((Basics.twice(rank1)-Basics.twice(rank2)-Basics.twice(rank3))/2) * wa
-        elseif  ia > ib     wa = recoupling2p("odered", leftCsf, rightCsf, rank2, rank3, rank1, ib, ic, ia)
+        elseif  ia > ib     wa = recoupling2p(Ordered2p(), leftCsf, rightCsf, rank2, rank3, rank1, ib, ic, ia)
                             wa = (-1)^Int64(Basics.twice(rank1)) * wa
         else                error("Recoupling_matrix_3_shells(): program stop C.")
         end
@@ -1409,12 +1314,11 @@ function  recoupling2p(leftCsf::CsfR, rightCsf::CsfR, rank1::AngularJ64,  rank2:
     return( wa )
 end
 
-
 """
-`SpinAngular.recoupling2p(sa::String, leftCsf::CsfR, rightCsf::CsfR, rank1::AngularJ64, rank2::AngularJ64, 
-                            rank::AngularJ64, ia::Int64, ib::Int64, ic::Int64)`  
-    ... computes the recoupling matrix R(ja, jb, Lambda^bra, Lambda^ket) for a scalar operator in the case of three 
-        interacting shells (shells are odered). See G. Gaigalas et al., 1997 J. Phys. B: At. Mol. Opt. Phys, 
+`SpinAngular.recoupling2p(::Ordered2p, leftCsf::CsfR, rightCsf::CsfR, rank1::AngularJ64, rank2::AngularJ64,
+                            rank::AngularJ64, ia::Int64, ib::Int64, ic::Int64)`
+    ... computes the recoupling matrix R(ja, jb, Lambda^bra, Lambda^ket) for a scalar operator in the case of three
+        interacting shells (shells are ordered). See G. Gaigalas et al., 1997 J. Phys. B: At. Mol. Opt. Phys,
         Vol 30 3747, Eq. (26) (p. 3756); a value::Float64 is returned.
 
         leftCsf  - is the bra confuguration state function in relativistic notation;
@@ -1426,10 +1330,9 @@ end
         ib       - is the index of the second interacting subshell;
         ic       - is the index of the third interacting subshell.
 """
-function  recoupling2p(sa::String, leftCsf::CsfR, rightCsf::CsfR, rank1::AngularJ64, rank2::AngularJ64, 
-                        rank::AngularJ64, ia::Int64, ib::Int64, ic::Int64) 
-    if sa != "odered"   error("Recoupling_matrix_3_ordered: program stop a.")    end
-    wa = 1.0 / sqrt((Basics.twice(leftCsf.subshellJ[ia])+1.) * (Basics.twice(leftCsf.subshellJ[ib])+1.) * 
+function  recoupling2p(::Ordered2p, leftCsf::CsfR, rightCsf::CsfR, rank1::AngularJ64, rank2::AngularJ64,
+                        rank::AngularJ64, ia::Int64, ib::Int64, ic::Int64)
+    wa = 1.0 / sqrt((Basics.twice(leftCsf.subshellJ[ia])+1.) * (Basics.twice(leftCsf.subshellJ[ib])+1.) *
                     (Basics.twice(rightCsf.subshellJ[ic])+1.)*(Basics.twice(rank)+1.))
     if ic - ib > 1      wa = wa * recouplingDiagram(DiagramC02(), leftCsf, rightCsf, rank, ib, ic)
                         if abs(wa) < 1.0e-11   return ( wa )   end
@@ -1447,7 +1350,6 @@ function  recoupling2p(sa::String, leftCsf::CsfR, rightCsf::CsfR, rank1::Angular
     wa = wa * recouplingDiagram(DiagramC02(), leftCsf, rightCsf, rank1, ia, ib)
     return( wa )
 end
-
 
 """
 `SpinAngular.recoupling2p(leftCsf::CsfR, rightCsf::CsfR, rank1::AngularJ64, rank2::AngularJ64, rank3::AngularJ64, 
@@ -1495,7 +1397,6 @@ function  recoupling2p(leftCsf::CsfR, rightCsf::CsfR, rank1::AngularJ64, rank2::
     return( wa )
 end
 
-
 """
 `SpinAngular.twoParticleDiffOcc2(leftCsf::CsfR, rightCsf::CsfR, creation::Int64, annihilation::Int64, 
                                     subshells::Array{Subshell,1})`
@@ -1532,7 +1433,6 @@ function twoParticleDiffOcc2(leftCsf::CsfR, rightCsf::CsfR, creation::Int64, ann
     return( coeffs2p )
 end
 
-
 """
 `SpinAngular.twoParticleDiagonal(leftCsf::CsfR, rightCsf::CsfR, subshells::Array{Subshell,1})`
     ... calculates the spin-angular coefficients for a given pair leftCsf, rightCsf of CSF for diagonal matrix elements 
@@ -1566,7 +1466,6 @@ function twoParticleDiagonal(leftCsf::CsfR, rightCsf::CsfR, subshells::Array{Sub
     end
     return( coeffs2p )
 end
-
 
 """
 `SpinAngular.twoParticle1(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, subshells::Array{Subshell,1})`
@@ -1604,7 +1503,6 @@ function twoParticle1(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, subshells::Array
     end
     return( coeffs2p )
 end
-
 
 """
 `SpinAngular.twoParticle2to5(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, ib::Int64, subshells::Array{Subshell,1})`
@@ -1674,7 +1572,6 @@ function twoParticle2to5(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, ib::Int64, su
     return( coeffs2p )
 end
 
-
 """
 `SpinAngular.twoParticle6(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, ib::Int64, subshells::Array{Subshell,1})`
     ... calculates the spin-angular coefficients for a given pair leftCsf, rightCsf of CSF for 
@@ -1740,7 +1637,6 @@ function twoParticle6(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, ib::Int64, subsh
     return( coeffs2p )
 end
 
-
 """
 `SpinAngular.twoParticle7to14(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, ib::Int64, ic::Int64, id::Int64, 
                                     subshells::Array{Subshell,1})`
@@ -1796,7 +1692,6 @@ function twoParticle7to14(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, ib::Int64, i
     end
     return( coeffs2p )
 end
-
 
 """
 `SpinAngular.twoParticle7to8(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, ib::Int64, 
@@ -1880,7 +1775,6 @@ function twoParticle7to8(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, ib::Int64,
     return( coeffs2p )
 end
 
-
 """
 `SpinAngular.twoParticle9to10(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, ib::Int64, 
                                     iaw::Int64, ibw::Int64, icw::Int64, idw::Int64, subshells::Array{Subshell,1})`
@@ -1961,7 +1855,6 @@ function twoParticle9to10(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, ib::Int64,
     end
     return( coeffs2p )
 end
-
 
 """
 `SpinAngular.twoParticle11to14(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, ib::Int64, ic::Int64, 
@@ -2075,7 +1968,6 @@ function twoParticle11to14(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, ib::Int64, 
     return( coeffs2p )
 end
 
-
 """
 `SpinAngular.twoParticle15to18(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, ib::Int64, ic::Int64, id::Int64, 
                                     subshells::Array{Subshell,1})`
@@ -2101,7 +1993,6 @@ function twoParticle15to18(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, ib::Int64, 
     end
     return( coeffs2p )
 end
-
 
 """
 `SpinAngular.twoParticle15to18order(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, ib::Int64, ic::Int64, iaw::Int64, ibw::Int64, 
@@ -2221,7 +2112,6 @@ function twoParticle15to18order(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, ib::In
     return( coeffs2p )
 end
 
-
 """
 `SpinAngular.twoParticle19to42(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, ib::Int64, ic::Int64, id::Int64, 
                                     subshells::Array{Subshell,1})`
@@ -2250,7 +2140,6 @@ function twoParticle19to42(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, ib::Int64, 
     end
     return( coeffs2p )
 end
-
 
 """
 `SpinAngular.twoParticle19to26(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, ib::Int64, ic::Int64, id::Int64, 
@@ -2427,7 +2316,6 @@ function twoParticle19to26(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, ib::Int64, 
     return( coeffs2p )
 end
 
-
 """
 `SpinAngular.twoParticle27to34(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, ib::Int64, ic::Int64, id::Int64, 
                                     irez::Int64, subshells::Array{Subshell,1})`
@@ -2584,7 +2472,6 @@ function twoParticle27to34(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, ib::Int64, 
     return( coeffs2p )
 end
 
-
 """
 `SpinAngular.twoParticle35to42(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, ib::Int64, ic::Int64, id::Int64, 
                                     irez::Int64, subshells::Array{Subshell,1})`
@@ -2740,6 +2627,5 @@ function twoParticle35to42(leftCsf::CsfR, rightCsf::CsfR, ia::Int64, ib::Int64, 
     end
     return( coeffs2p )
 end
-
 
 end # module

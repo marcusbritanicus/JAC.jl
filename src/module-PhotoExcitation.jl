@@ -66,17 +66,17 @@ function Settings(set::PhotoExcitation.Settings;
     photonEnergyShift::Union{Nothing,Float64}=nothing,              mimimumPhotonEnergy::Union{Nothing,Float64}=nothing,     
     maximumPhotonEnergy::Union{Nothing,Float64}=nothing,            stokes::Union{Nothing,ExpStokes}=nothing)  
     
-    if  multipoles          == nothing   multipolesx          = set.multipoles              else  multipolesx          = multipoles            end 
-    if  gauges              == nothing   gaugesx              = set.gauges                  else  gaugesx              = gauges                end 
-    if  calcForStokes       == nothing   calcForStokesx       = set.calcForStokes           else  calcForStokesx       = calcForStokes         end 
-    if  calcPhotonDm        == nothing   calcPhotonDmx        = set.calcPhotonDm            else  calcPhotonDmx        = calcPhotonDm          end 
-    if  calcTensors         == nothing   calcTensorsx         = set.calcTensors             else  calcTensorsx         = calcTensors           end 
-    if  printBefore         == nothing   printBeforex         = set.printBefore             else  printBeforex         = printBefore           end 
-    if  lineSelection       == nothing   lineSelectionx       = set.lineSelection           else  lineSelectionx       = lineSelection         end 
-    if  photonEnergyShift   == nothing   photonEnergyShiftx   = set.photonEnergyShift       else  photonEnergyShiftx   = photonEnergyShift     end 
-    if  mimimumPhotonEnergy == nothing   mimimumPhotonEnergyx = set.mimimumPhotonEnergy     else  mimimumPhotonEnergyx = mimimumPhotonEnergy   end 
-    if  maximumPhotonEnergy == nothing   maximumPhotonEnergyx = set.maximumPhotonEnergy     else  maximumPhotonEnergyx = maximumPhotonEnergy   end 
-    if  stokes              == nothing   stokesx              = set.stokes                  else  stokesx              = stokes                end 
+    if  isnothing(multipoles)            multipolesx          = set.multipoles              else  multipolesx          = multipoles            end 
+    if  isnothing(gauges)                gaugesx              = set.gauges                  else  gaugesx              = gauges                end 
+    if  isnothing(calcForStokes)         calcForStokesx       = set.calcForStokes           else  calcForStokesx       = calcForStokes         end 
+    if  isnothing(calcPhotonDm)          calcPhotonDmx        = set.calcPhotonDm            else  calcPhotonDmx        = calcPhotonDm          end 
+    if  isnothing(calcTensors)           calcTensorsx         = set.calcTensors             else  calcTensorsx         = calcTensors           end 
+    if  isnothing(printBefore)           printBeforex         = set.printBefore             else  printBeforex         = printBefore           end 
+    if  isnothing(lineSelection)         lineSelectionx       = set.lineSelection           else  lineSelectionx       = lineSelection         end 
+    if  isnothing(photonEnergyShift)     photonEnergyShiftx   = set.photonEnergyShift       else  photonEnergyShiftx   = photonEnergyShift     end 
+    if  isnothing(mimimumPhotonEnergy)   mimimumPhotonEnergyx = set.mimimumPhotonEnergy     else  mimimumPhotonEnergyx = mimimumPhotonEnergy   end 
+    if  isnothing(maximumPhotonEnergy)   maximumPhotonEnergyx = set.maximumPhotonEnergy     else  maximumPhotonEnergyx = maximumPhotonEnergy   end 
+    if  isnothing(stokes)                stokesx              = set.stokes                  else  stokesx              = stokes                end 
     
     Settings( multipolesx, gaugesx, calcForStokesx, calcPhotonDmx, calcTensorsx, printBeforex, lineSelectionx,
                 photonEnergyShiftx, mimimumPhotonEnergyx, maximumPhotonEnergyx, stokesx)
@@ -156,14 +156,13 @@ end
 function  computeAmplitudesProperties(line::PhotoExcitation.Line, grid::Radial.Grid, settings::PhotoExcitation.Settings; printout::Bool=true)
     newChannels = PhotoEmission.Channel[];    Ji2 = Basics.twice(line.initialLevel.J);    Jf2 = Basics.twice(line.finalLevel.J)
     for  channel  in  line.channels
-        amplitude = PhotoEmission.amplitude("absorption", channel.multipole, channel.gauge, line.omega, 
+        amplitude = PhotoEmission.amplitude(Absorption(), channel.multipole, channel.gauge, line.omega, 
                                             line.finalLevel, line.initialLevel, grid, printout=printout)
         push!( newChannels, PhotoEmission.Channel(channel.multipole, channel.gauge, amplitude) )
     end
     # Calculate the absorption oscillator strength
     oscCoulomb = oscBabushkin = 0.;   omega = line.omega;   alpha = Defaults.getDefaults("alpha")
     for  channel  in  newChannels
-        ##x wa = line.omega / (Basics.twice(channel.multipole.L) + 1) * (alpha * line.omega)^(2*channel.multipole.L - 2)
         wa = 8pi * alpha * line.omega / (Ji2 + 1) * (Jf2 + 1) / 2.
         #x @show  channel
         if      channel.gauge == Basics.Coulomb     oscCoulomb   = oscCoulomb    +  channel.amplitude * conj(channel.amplitude) * wa
@@ -251,7 +250,7 @@ end
 function  computeLinesCascade(finalMultiplet::Multiplet, initialMultiplet::Multiplet, grid::Radial.Grid, 
                               settings::PhotoExcitation.Settings, initialLevelSelection::LevelSelection; output::Bool=true, printout::Bool=true) 
     # Define a common subshell list for both multiplets
-    subshellList = Basics.generate("subshells: ordered list for two bases", finalMultiplet.levels[1].basis, initialMultiplet.levels[1].basis)
+    subshellList = Basics.generate(OrderedSubshellList(), finalMultiplet.levels[1].basis, initialMultiplet.levels[1].basis)
     Defaults.setDefaults("relativistic subshell list", subshellList; printout=false)
     lines = PhotoExcitation.determineLines(finalMultiplet, initialMultiplet, settings)
     # Display all selected lines before the computations start
@@ -260,7 +259,6 @@ function  computeLinesCascade(finalMultiplet::Multiplet, initialMultiplet::Multi
     newLines = PhotoExcitation.Line[]
     for  (i,line)  in  enumerate(lines)
         if  rem(i,200) == 0    println("> Excitation line $i:")   end
-        ##x @show Basics.selectLevel(line.initialLevel, initialLevelSelection)
         if  !Basics.selectLevel(line.initialLevel, initialLevelSelection)     continue    
         ## else @show "jump to be calculated";    continue 
         end
@@ -316,7 +314,6 @@ function determineChannels(finalLevel::Level, initialLevel::Level, settings::Pho
             end
         end
     end
-    ##x println("PhotoExcitation.determineChannels-aa: channels = $channels ")
     return( channels )  
 end
 
@@ -454,7 +451,6 @@ function  displayLines(stream::IO, lines::Array{PhotoExcitation.Line,1})
         for  i in 1:length(line.channels)
             push!( mpGaugeList, (line.channels[i].multipole, line.channels[i].gauge) )
         end
-        ##x println("PhotoExcitation.diplayLines-ad: mpGaugeList = ", mpGaugeList)
         sa = sa * TableStrings.multipoleGaugeTupels(50, mpGaugeList)
         println(stream, sa )
     end
@@ -541,8 +537,6 @@ function  displayCrossSections(stream::IO, lines::Array{PhotoExcitation.Line,1},
         sa = sa * TableStrings.flushleft(11, mpString[1:10];  na=5)
         sa = sa * @sprintf("%.4e", Defaults.convertUnits("cross section: from atomic", line.crossSection.Coulomb))     * "   "
         sa = sa * @sprintf("%.4e", Defaults.convertUnits("cross section: from atomic", line.crossSection.Babushkin))   * "    "
-        ##x sa = sa * @sprintf("%.6e", line.anisotropy.Coulomb)      * "    "
-        ##x sa = sa * @sprintf("%.6e", line.anisotropy.Babushkin)    * "    "
         println(stream, sa)
     end
     println(stream, "  ", TableStrings.hLine(nx))
@@ -675,7 +669,6 @@ function  estimateCrossSection(lines::Array{PhotoExcitation.Line,1}, omega::Floa
         end  
     end
     
-    ##x if  cs != Basics.EmProperty(0.)   @show  omega, gamma, cs    end
     
     return( cs )
 end

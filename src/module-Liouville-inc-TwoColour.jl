@@ -1,27 +1,39 @@
 # module-Liouville-inc-TwoColour.jl
 
 using ..Basics, ..Defaults, ..Pulse, ..PhotoExcitation, ..PhotoEmission, ..PhotoIonization, ..Continuum, ..Nuclear
+using JLD2, DelimitedFiles, Plots, LinearAlgebra
+using WignerSymbols
 
-# Define envelope function
-function envelope(pulse::Pulse.GaussianSimplified, t::Float64)
-    sigma = pulse.fwhm / (2 * sqrt(2 * log(2)))
-    wa = (t - pulse.timeDelay)^2 / (2 * sigma^2)
-    return exp(-wa)
+# Define the envelope function
+function envelope( pulse::Pulse.GaussianSimplified, t::Float64 )
+    sigma = pulse.fwhm / ( 2 * sqrt( 2 * log( 2 ) ) )
+    t_shift = t - pulse.timeDelay
+    return exp( -t_shift^2 / ( 2 * sigma^2 ) )
 end
 
-
+# Define the carrier function
 function carrier( pulse::Pulse.GaussianSimplified, t::Float64 )
-    return cos( pulse.omega * t )
+    t_shift = t - pulse.timeDelay
+    return cos( pulse.omega * t_shift )
 end
 
-function pulse( pulse::Pulse.GaussianSimplified, t::Float64 )
-    return envelope( pulse, t ) * carrier( pulse * t )
+# Convert Intensity to Field
+function fix_field_amplitude( pulse::Pulse.GaussianSimplified )::Float64
+    # Your pulse.A0 currently holds I_au ( 14.25 or 1.425 )
+    # Correct A0 should be: sqrt( 8πα * I_au ) / ω_au
+    I_au = pulse.A0  # because that's what you mistakenly stored
+    ω_au = pulse.omega
+    α = 1 / 137.036
+
+    return sqrt( 8π * α * I_au ) / ω_au
 end
 
-
+function pulseFunction( pulse::Pulse.GaussianSimplified, t::Float64 )
+    return fix_field_amplitude( pulse ) * envelope( pulse, t ) * carrier( pulse, t )
+end
 """
-`struct Liouville.TwoColourLevel`
-    ... defines a struct to comprise the level information for a Liouville time evolution in the two-color scheme.
+`struct TwoColourLevel`
+    defines a struct to comprise the level information for a Liouville time evolution.
 """
 struct TwoColourLevel
     leadingConfig      ::Configuration
@@ -31,607 +43,935 @@ struct TwoColourLevel
 end
 
 function TwoColourLevel()
-    TwoColourLevel(Configuration(), "xx", Level(), false)
+    TwoColourLevel( Configuration(), "xx", Level(), false )
 end
 
-function Base.show(io::IO, level::TwoColourLevel)
-    println(io, "leadingConfig:          $(level.leadingConfig)")
-    println(io, "leadingNotation:        $(level.leadingNotation)")
-    println(io, "level:                  $(level.level)")
-    println(io, "isContinuum:            $(level.isContinuum)")
+function Base.show( io::IO, level::TwoColourLevel )
+    println( io, "leadingConfig:          $( level.leadingConfig )" )
+    println( io, "leadingNotation:        $( level.leadingNotation )" )
+    println( io, "level:                  $( level.level )" )
+    println( io, "isContinuum:            $( level.isContinuum )" )
 end
 
-"""
-`Liouville.initializeLevels(scheme::TwoColourScheme, multiplet::Multiplet)`
-    ... initialize the levels for two-color computation.
-"""
-function initializeLevels(scheme::TwoColourScheme, multiplet::Multiplet)
-    liouvilleLevels = TwoColourLevel[];
-    noLevels = length(scheme.levelSelection.indices)
+# ============================================================================
+# Statistical Tensor Basis
+# ============================================================================
 
-    # Check proper level notations
-    if length(scheme.levelNotations) - 1 != noLevels
-        error("Expect $noLevels strings for level notations, got $(scheme.levelNotations)")
+"""
+`StatisticalTensorBasis` - Manages the mapping from levels to statistical tensors.
+"""
+struct StatisticalTensorBasis
+    n_levels::Int
+    n_tensors::Int
+    level_indices::Vector{Dict{Tuple{Int,Int}, Int}}
+    level_J::Vector{Float64}
+    level_energies::Vector{Float64}
+
+    function StatisticalTensorBasis( levels::Vector{TwoColourLevel} )
+        n_levels = length( levels )
+        level_indices = Vector{Dict{Tuple{Int,Int}, Int}}()
+        level_J = Float64[]
+        level_energies = Float64[]
+        global_idx = 1
+
+        for level in levels
+            J_val = level.level.J
+            J_float = Float64( J_val.num ) / Float64( J_val.den )
+            push!( level_J, J_float )
+            push!( level_energies, level.level.energy )
+
+            tensors = Dict{Tuple{Int,Int}, Int}()
+
+            if level.isContinuum || J_float == 0.0
+                tensors[ ( 0, 0 ) ] = global_idx
+                global_idx += 1
+            else
+                K_max = Int( round( 2*J_float ) )
+                for K in 0:K_max
+                    for Q in -K:K
+                        tensors[ ( K, Q ) ] = global_idx
+                        global_idx += 1
+                    end
+                end
+            end
+            push!( level_indices, tensors )
+        end
+
+        return new( n_levels, global_idx - 1, level_indices, level_J, level_energies )
+    end
+end
+
+function Base.show( io::IO, basis::StatisticalTensorBasis )
+    println( io, "StatisticalTensorBasis:" )
+    println( io, "  Total tensors: $( basis.n_tensors )" )
+    println( io, "  Total levels: $( basis.n_levels )" )
+    for i in 1:basis.n_levels
+        println( io, "    Level $i: J=$( basis.level_J[ i ] ), tensors=$( length( basis.level_indices[ i ] ) )" )
+    end
+end
+
+# Export the new functions
+export StatisticalTensorBasis
+
+
+"""
+    build_coupling_hamiltonian( basis::StatisticalTensorBasis, reduced_dipoles::Dict, E_field::Float64, q::Int )
+
+Build coupling Hamiltonian in statistical tensor basis for given field strength and polarization q.
+"""
+# function build_coupling_hamiltonian( basis::StatisticalTensorBasis, reduced_dipoles::Dict{Tuple{Int,Int}, Float64}, E_field::Float64, q::Int )
+#     H = zeros( ComplexF64, basis.n_tensors, basis.n_tensors )
+
+#     if abs( E_field ) < 1e-12
+#         return H
+#     end
+
+#     for i in 1:basis.n_levels
+#         for j in 1:basis.n_levels
+#             i == j && continue
+
+#             key = ( min( i,j ), max( i,j ) )
+#             if !haskey( reduced_dipoles, key )
+#                 continue
+#             end
+#             d_reduced = reduced_dipoles[ key ]
+#             d_reduced == 0.0 && continue
+
+#             strength = -d_reduced * E_field
+
+#             tensors_i = basis.level_indices[ i ]
+#             tensors_j = basis.level_indices[ j ]
+#             threej = 0
+#             for ( key_i, idx_i ) in tensors_i
+#                 ( K_i, Q_i ) = key_i
+#                 for ( key_j, idx_j ) in tensors_j
+#                     ( K_j, Q_j ) = key_j
+
+#                     if abs( K_j - K_i ) > 1
+#                         continue
+#                     end
+#                     if Q_j != Q_i + q
+#                         continue
+#                     end
+#                     if K_i == 0 && K_j == 0
+#                         continue
+#                     end
+
+#                     # j = K/2, m = Q/2 using HalfInt ( no Rational simplification )
+#                     j1 = K_j/2
+#                     j2 = 1      # = 1
+#                     j3 = K_i/2
+#                     m1 = -Q_j/2
+#                     m2 = q    # = q
+#                     m3 = Q_i/2
+
+#                    try
+#                         threej = float( wigner3j( j1, j2, j3, m1, m2, m3 ) )
+#                     catch e
+#                         if isa( e, DomainError )
+#                             threej = 0.0
+#                         else
+#                             rethrow()
+#                         end
+#                     end
+
+#                     H[ idx_i, idx_j ] = strength * sqrt( 3 ) * threej
+#                     H[ idx_j, idx_i ] = conj( H[ idx_i, idx_j ] )
+#                 end
+#             end
+#         end
+#     end
+
+#     return H
+# end
+
+# function build_coupling_hamiltonian(basis::StatisticalTensorBasis,
+#                                     reduced_dipoles::Dict{Tuple{Int,Int}, Float64},
+#                                     E_field::Float64, q::Int)
+#     H = zeros(ComplexF64, basis.n_tensors, basis.n_tensors)
+
+#     if abs(E_field) < 1e-12
+#         return H
+#     end
+
+#     for i in 1:basis.n_levels
+#         for j in 1:basis.n_levels
+#             i == j && continue
+
+#             key = (min(i,j), max(i,j))
+#             if !haskey(reduced_dipoles, key)
+#                 continue
+#             end
+#             d_reduced = reduced_dipoles[key]
+#             d_reduced == 0.0 && continue
+
+#             strength = -d_reduced * E_field
+
+#             J_i = basis.level_J[i]
+#             J_j = basis.level_J[j]
+
+#             tensors_i = basis.level_indices[i]
+#             tensors_j = basis.level_indices[j]
+
+#             for (key_i, idx_i) in tensors_i
+#                 (K_i, Q_i) = key_i
+#                 for (key_j, idx_j) in tensors_j
+#                     (K_j, Q_j) = key_j
+
+#                     # Selection rules
+#                     if abs(K_j - K_i) > 1
+#                         continue
+#                     end
+#                     if Q_j != Q_i + q
+#                         continue
+#                     end
+
+#                     # The statistical tensor coupling formula from Bartschat Eq. (11.31)
+#                     threej = 0
+#                     try
+#                         threej = wigner3j(K_i, 1, K_j, Q_i, q, -Q_j)
+
+#                     catch e
+#                         threej = 0
+
+#                     end
+
+#                     if abs(threej) < 1e-12
+#                         continue
+#                     end
+
+#                     sixj = wigner6j(K_i, 1, K_j, J_i, J_i, J_j)
+
+#                     # Phase factor - use cis for half-integer safety
+#                     phase = cis(π * (K_i + J_i - J_j))
+
+#                     prefactor = sqrt((2*K_i+1)*(2*K_j+1)*(2*J_i+1)*(2*J_j+1))
+
+#                     coupling = strength * phase * prefactor * threej * sixj
+
+#                     # For debugging
+#                     if K_i == 0 && K_j == 1
+#                         println("K=0→K=1 coupling: i=$i, j=$j, K_i=$K_i, K_j=$K_j, Q_i=$Q_i, Q_j=$Q_j, coupling=$coupling")
+#                     end
+
+#                     H[idx_i, idx_j] = coupling
+#                     H[idx_j, idx_i] = conj(coupling)
+#                 end
+#             end
+#         end
+#     end
+
+#     return H
+# end
+
+function build_coupling_hamiltonian(basis::StatisticalTensorBasis, reduced_dipoles::Dict{Tuple{Int,Int}, Float64}, E_field::Float64, q::Int)
+    H = zeros(ComplexF64, basis.n_tensors, basis.n_tensors)
+
+    if abs(E_field) < 1e-12
+        return H
     end
 
-    for (idx, index) in enumerate(scheme.levelSelection.indices)
-        for level in multiplet.levels
-            if index == level.index
-                leadingConf = Basics.extractConfiguration(Basics.LeadingConfiguration(), level)
-                liouvLevel = TwoColourLevel(leadingConf, scheme.levelNotations[idx], level, false)
-                push!(liouvilleLevels, liouvLevel)
+    # First, collect all unique reduced dipoles we'll need
+    # For intra-level couplings, we need the dipole matrix elements within the same level
+    # These come from the same transition dipole, but connecting different sublevels
+
+    for i in 1:basis.n_levels
+        for j in 1:basis.n_levels
+            # Get the appropriate reduced dipole
+            if i != j
+                key = (min(i,j), max(i,j))
+                if !haskey(reduced_dipoles, key)
+                    continue
+                end
+                d_reduced = reduced_dipoles[key]
+            else
+                # For intra-level couplings, use the same dipole from any connected level
+                # Find a level k that connects to i
+                d_reduced = 0.0
+                for k in 1:basis.n_levels
+                    if k != i
+                        key = (min(i,k), max(i,k))
+                        if haskey(reduced_dipoles, key)
+                            d_reduced = reduced_dipoles[key]
+                            break
+                        end
+                    end
+                end
+                d_reduced == 0.0 && continue
+            end
+
+            strength = -d_reduced * E_field
+
+            J_i = basis.level_J[i]
+            J_j = basis.level_J[j]
+
+            tensors_i = basis.level_indices[i]
+            tensors_j = basis.level_indices[j]
+
+            for (key_i, idx_i) in tensors_i
+                (K_i, Q_i) = key_i
+                for (key_j, idx_j) in tensors_j
+                    (K_j, Q_j) = key_j
+
+                    # Selection rules
+                    if abs(K_j - K_i) > 1
+                        continue
+                    end
+                    if Q_j != Q_i + q
+                        continue
+                    end
+
+                    # Calculate 3j symbol
+                    threej = 0.0
+                    try
+                        threej = wigner3j(K_i, 1, K_j, Q_i, q, -Q_j)
+                    catch
+                        threej = 0.0
+                    end
+
+                    if abs(threej) < 1e-12
+                        continue
+                    end
+
+                    # Calculate 6j symbol - this handles the recoupling
+                    sixj = wigner6j(K_i, 1, K_j, J_i, J_i, J_j)
+
+                    # Phase factor
+                    phase = (-1.0)^(K_i) * (-1.0)^(J_i - J_j)
+
+                    prefactor = sqrt((2*K_i+1)*(2*K_j+1)*(2*J_i+1)*(2*J_j+1))
+
+                    coupling = strength * phase * prefactor * threej * sixj
+
+                    # Debug for intra-level couplings (i == j)
+                    if i == j && abs(coupling) > 1e-12
+                        println("INTRA-LEVEL COUPLING: level $i, (K=$K_i,Q=$Q_i) <-> (K=$K_j,Q=$Q_j): $coupling")
+                    end
+
+                    H[idx_i, idx_j] = coupling
+                    H[idx_j, idx_i] = conj(coupling)
+                end
             end
         end
     end
 
-    # Add a loss channel (ionization continuum)
-    push!(liouvilleLevels, TwoColourLevel(Configuration("[He]"), scheme.levelNotations[end], Level(), false))
+    return H
+end
+
+# ============================================================================
+# Time Evolution in Statistical Tensor Basis
+# ============================================================================
+
+"""
+    solve_liouville_tensor( basis::StatisticalTensorBasis, H0::Matrix{ComplexF64},
+                          coupling_func::Function, ρ0::Vector{ComplexF64},
+                          tspan::Tuple{Float64,Float64}, dt::Float64 )
+
+Solve Liouville equation in statistical tensor basis.
+"""
+# function solve_liouville_tensor( basis::StatisticalTensorBasis, H0::Matrix{ComplexF64},
+#                                 coupling_func::Function, ρ0::Vector{ComplexF64},
+#                                 tspan::Tuple{Float64,Float64}, dt::Float64 )
+
+#     n_steps = Int( ceil( ( tspan[ 2 ] - tspan[ 1 ] ) / dt ) )
+#     times = Float64[ tspan[ 1 ] ]
+#     ρ_history = [ copy( ρ0 ) ]
+
+#     ρ = copy( ρ0 )
+#     t = tspan[ 1 ]
+
+#     println( "\nTime evolution: $n_steps steps" )
+
+#     for step in 1:n_steps
+#         # Get coupling at current time <------------------
+#         H_coup = coupling_func( t )
+#         H_total = H0 + H_coup
+
+#         # RK4 for vectorized density matrix
+#         function dρdt( ρ_vec )
+#             ρ_mat = reshape( ρ_vec, basis.n_tensors, basis.n_tensors )
+#             dρ = -im * ( H_total * ρ_mat - ρ_mat * H_total )
+#             return vec( dρ )
+#         end
+
+#         k1 = dρdt( ρ )
+#         k2 = dρdt( ρ + dt/2 * k1 )
+#         k3 = dρdt( ρ + dt/2 * k2 )
+#         k4 = dρdt( ρ + dt * k3 )
+
+#         ρ += dt/6 * ( k1 + 2k2 + 2k3 + k4 )
+#         t += dt
+
+#         if step % 100 == 0 || step == n_steps
+#             push!( times, t )
+#             push!( ρ_history, copy( ρ ) )
+#         end
+#     end
+
+#     return times, ρ_history
+# end
+
+
+# ============================================================================
+# Time Evolution in Statistical Tensor Basis
+# ============================================================================
+
+"""
+    solve_liouville_tensor( basis::StatisticalTensorBasis, H0::Matrix{ComplexF64},
+                          coupling_func::Function, ρ0::Matrix{ComplexF64},
+                          tspan::Tuple{Float64,Float64}, dt::Float64 )
+
+Solve Liouville equation in statistical tensor basis using RK4.
+"""
+function solve_liouville_tensor( basis::StatisticalTensorBasis, H0::Matrix{ComplexF64},
+                                coupling_func::Function, ρ0::Matrix{ComplexF64},
+                                tspan::Tuple{Float64,Float64}, dt::Float64 )
+
+    n_steps = Int( ceil( ( tspan[ 2 ] - tspan[ 1 ] ) / dt ) )
+    times = Float64[ tspan[ 1 ] ]
+    ρ_history = [ copy( ρ0 ) ]
+
+    ρ = copy( ρ0 )
+    t = tspan[ 1 ]
+
+    println( "\nTime evolution: $n_steps steps" )
+
+    # Pre-allocate workspace
+    n = basis.n_tensors
+
+    for step in 1:n_steps
+        # Get coupling at current time
+        H_coup = coupling_func( t )
+        H_total = H0 + H_coup
+
+        # Define derivative for matrix
+        function dρdt( ρ_mat::Matrix{ComplexF64} )
+            return -im * ( H_total * ρ_mat - ρ_mat * H_total )
+        end
+
+        # RK4 for matrix
+        k1 = dρdt( ρ )
+        k2 = dρdt( ρ + dt/2 * k1 )
+        k3 = dρdt( ρ + dt/2 * k2 )
+        k4 = dρdt( ρ + dt * k3 )
+
+        ρ += dt/6 * ( k1 + 2k2 + 2k3 + k4 )
+        t += dt
+
+        if step % 100 == 0 || step == n_steps
+            push!( times, t )
+            push!( ρ_history, copy( ρ ) )
+        end
+    end
+
+    return times, ρ_history
+end
+
+export solve_liouville_tensor
+
+
+# ============================================================================
+# Initialize Levels from Scheme and Multiplet
+# ============================================================================
+
+"""
+    initializeLevels( scheme::TwoColourScheme, multiplet::Multiplet )
+
+Initialize levels for two-color computation.
+"""
+function initializeLevels( scheme::TwoColourScheme, multiplet::Multiplet )
+    liouvilleLevels = TwoColourLevel[]
+    noLevels = length( scheme.levelSelection.indices )
+
+    for ( idx, index ) in enumerate( scheme.levelSelection.indices )
+        for level in multiplet.levels
+            if index == level.index
+                leadingConf = Basics.extractConfiguration( Basics.LeadingConfiguration(), level )
+                liouvLevel = TwoColourLevel( leadingConf, scheme.levelNotations[ idx ], level, false )
+                push!( liouvilleLevels, liouvLevel )
+            end
+        end
+    end
+
+    # Add loss channel
+    push!( liouvilleLevels, TwoColourLevel( Configuration( "[He]" ), scheme.levelNotations[ end ], Level(), true ) )
 
     # Display levels
-    println(" ")
-    println("  Selected Two-Color levels:")
-    println(" ")
-    for (idx, level) in enumerate(liouvilleLevels)
-        sa = "       " * string(idx) * ")  "
-        sa = sa * string(level.leadingConfig) * "   "
-        sa = sa * string(level.leadingNotation) * "   "
-        println(sa)
+    println( " " )
+    println( "  Selected Two-Color levels:" )
+    println( " " )
+    for ( idx, level ) in enumerate( liouvilleLevels )
+        sa = "       " * string( idx ) * " )  "
+        sa = sa * string( level.leadingConfig ) * "   "
+        sa = sa * string( level.leadingNotation ) * "   "
+        println( sa )
     end
-    println(" ")
+    println( " " )
 
     return liouvilleLevels
 end
 
-"""
-`Liouville.initializeDensityMatrix(levels::Array{TwoColourLevel,1})`
-    ... initialize the density matrix (ground state populated).
-"""
-function initializeDensityMatrix(levels::Array{TwoColourLevel,1})
-    noLevels = length(levels)
-    energies = Float64[]
-    densityM = zeros(ComplexF64, noLevels, noLevels)
 
-    for level in levels
-        push!(energies, level.level.energy)
+function get_oscillator_dipole( initial_level::Level, final_level::Level, omega::Float64, grid::Radial.Grid )
+    println( "\n--- get_oscillator_dipole ---" )
+    println( "Initial level index: $( initial_level.index ), J: $( initial_level.J )" )
+    println( "Final level index: $( final_level.index ), J: $( final_level.J )" )
+    println( "Omega: $omega" )
+
+    # 1. Setup settings specifically for E1 transitions
+    settings = PhotoExcitation.Settings( [ Basics.E1 ], [ Basics.UseCoulomb ], false, false, false, false,
+                                        Basics.LineSelection(), 0.0, 0.0, 1.0e6, Basics.ExpStokes() )
+
+    # 2. Determine the channels
+    channels = PhotoExcitation.determineChannels( final_level, initial_level, settings )
+    println( "Number of channels found: $( length( channels ) )" )
+
+    if isempty( channels )
+        @warn "No E1 channels found for oscillator strength calculation."
+        return 0.0 + 0.0im
     end
-    lowestEn = minimum(energies)
-    idx = findfirst(==(lowestEn), energies)
-    densityM[idx, idx] = 1.0
 
-    return densityM
-end
-
-"""
-`Liouville.displayDensityMatrix(stream, levels::Array{TwoColourLevel,1}, densityM::Matrix{ComplexF64})`
-    ... Display the current density matrix.
-"""
-function displayDensityMatrix(stream, levels::Array{TwoColourLevel,1}, densityM::Matrix{ComplexF64})
-    println(stream, " ")
-    println(stream, "  Selected Two-Color levels and current density matrix:")
-    println(stream, " ")
-    for (idx, level) in enumerate(levels)
-        sa = "       " * string(idx) * ")  "
-        sa = sa * string(level.leadingConfig) * "   "
-        sa = sa * string(level.leadingNotation) * "                          "
-        # Only truncate if string is long enough
-        if length(sa) >= 70
-            sa = sa[1:70]
+    # Print channel info safely
+    for ( i, ch ) in enumerate( channels )
+        println( "Channel $i: type=$( typeof( ch ) )" )
+        for name in fieldnames( typeof( ch ) )
+            try
+                println( "  $name = $( getfield( ch, name ) )" )
+            catch
+                println( "  $name = <error accessing>" )
+            end
         end
-        row = densityM[idx, :]
-        for z in row
-            sa = sa * @sprintf("%8.3f %+8.3fim  ", real(z), imag(z))
-        end
-        println(sa)
-    end
-    println(stream, " ")
-    return nothing
-end
-
-
-"""
-`Liouville.initializeAtomicHamiltonianMatrix(scheme::TwoColourScheme, levels::Array{TwoColourLevel,1})`
-    ... initialize the atomic Hamiltonian matrix (diagonal energies).
-"""
-function initializeAtomicHamiltonianMatrix(scheme::TwoColourScheme, levels::Array{TwoColourLevel,1})
-    noLevels = length(levels)
-    energies = Float64[]
-    hamiltonian = zeros(ComplexF64, noLevels, noLevels)
-
-    # #=Get=# energies for all levels
-    for level in levels
-        push!(energies, level.level.energy)
     end
 
-    # Find lowest energy for reference
-    lowestEn = minimum(energies)
+    # 3. Create and compute the line properties
+    line = PhotoExcitation.Line( initial_level, final_level, omega,
+                                Basics.EmProperty( 0.,0. ), Basics.EmProperty( 0.,0. ),
+                                Basics.TensorComp[], true, channels )
 
-    # Set diagonal elements as excitation energies
-    for n in 1:noLevels
-        hamiltonian[n, n] = energies[n] - lowestEn
-    end
+    computed_line = PhotoExcitation.computeAmplitudesProperties( line, grid, settings, printout=false )
 
-    return hamiltonian
-end
+    println( "Computed line oscStrength.Coulomb: $( computed_line.oscStrength.Coulomb )" )
+    println( "Computed line oscStrength.Babushkin: $( computed_line.oscStrength.Babushkin )" )
+    println( "Number of computed channels: $( length( computed_line.channels ) )" )
 
+    # 4. Extract f and convert to dipole magnitude: |d| = sqrt( 3f / ( 2ω ) )
+    f_coulomb = computed_line.oscStrength.Coulomb
+    println( "f_coulomb = $f_coulomb" )
 
+    d_mag = sqrt( 3 * f_coulomb / ( 2 * omega ) )
+    println( "d_mag = $d_mag" )
 
-"""
-`Liouville.getDipoleFromPhotoExcitation(level_i::Level, level_j::Level, grid::Radial.Grid)`
-    ... computes electric dipole matrix element using JAC's PhotoExcitation module.
-"""
-#function getDipoleFromPhotoExcitation(level_i::Level, level_j::Level, grid::Radial.Grid)
-#    # Determine final (higher energy) and initial (lower energy)
-#    if level_j.energy > level_i.energy
-#        final_level = level_j
-#        initial_level = level_i
-#    else
-#        final_level = level_i
-#        initial_level = level_j
-#    end
-#
-#    omega = abs(level_j.energy - level_i.energy)
-#
-#    if omega < 1e-6
-#        return 0.0 + 0.0im
-#    end
-#
-#    # Convert AngularJ64 to Float64 for calculations
-#    Ji = Float64(initial_level.J)
-#    Jf = Float64(final_level.J)
-#    delta_J = abs(Jf - Ji)
-#    parity_change = (final_level.parity != initial_level.parity)
-#
-#    println("\n=== Dipole Debug ===")
-#    println("  initial_level: J=$Ji, parity=$(initial_level.parity), energy=$(initial_level.energy)")
-#    println("  final_level:   J=$Jf, parity=$(final_level.parity), energy=$(final_level.energy)")
-#    println("  omega = $omega a.u.")
-#    println("  delta_J = $delta_J, parity_change = $parity_change")
-#    println("  E1 allowed? $(delta_J <= 1.0 && !(delta_J == 0.0 && Ji == 0.0) && parity_change)")
-#
-#    # Check E1 selection rules
-#    if delta_J > 1.0 || (delta_J == 0.0 && Ji == 0.0) || !parity_change
-#        println("  → Transition not allowed by E1 selection rules")
-#        return 0.0 + 0.0im
-#    end
-#
-#    # Use PhotoExcitation for bound-bound transitions
-#    settings = PhotoExcitation.Settings(
-#        [E1], [UseCoulomb], false, false, false, false,
-#        LineSelection(), 0.0, 0.0, 1.0e6, Basics.ExpStokes()
-#    )
-#
-#    channels = PhotoExcitation.determineChannels(final_level, initial_level, settings)
-#    println("  Number of channels found: $(length(channels))")
-#
-#    if isempty(channels)
-#        println("  → No channels found")
-#        return 0.0 + 0.0im
-#    end
-#
-#    for ch in channels
-#        println("  Channel: multipole=$(ch.multipole), gauge=$(ch.gauge)")
-#    end
-#
-#    line = PhotoExcitation.Line(initial_level, final_level, omega,
-#                                EmProperty(0.,0.), EmProperty(0.,0.),
-#                                TensorComp[], true, channels)
-#    computed_line = PhotoExcitation.computeAmplitudesProperties(line, grid, settings, printout=false)
-#
-#    for channel in computed_line.channels
-#        if channel.multipole == E1 && channel.gauge == Basics.Coulomb
-#            println("  → Dipole amplitude = $(channel.amplitude)")
-#            return channel.amplitude
-#        end
-#    end
-#
-#    println("  → No E1 Coulomb channel found")
-#    return 0.0 + 0.0im
-#end
-function getDipoleFromPhotoExcitation(level_i::Level, level_j::Level, grid::Radial.Grid)
-    # Determine final (higher energy) and initial (lower energy)
-    if level_j.energy > level_i.energy
-        final_level = level_j
-        initial_level = level_i
-    else
-        final_level = level_i
-        initial_level = level_j
-    end
-
-    omega = abs(level_j.energy - level_i.energy)
-    if omega < 1e-6
-        return 0.0 + 0.0im
-    end
-
-    # Use PhotoExcitation to compute the line
-    settings = PhotoExcitation.Settings(
-        [E1], [UseCoulomb], false, false, false, false,
-        LineSelection(), 0.0, 0.0, 1.0e6, Basics.ExpStokes()
-    )
-    channels = PhotoExcitation.determineChannels(final_level, initial_level, settings)
-    if isempty(channels)
-        return 0.0 + 0.0im
-    end
-    line = PhotoExcitation.Line(initial_level, final_level, omega,
-                                EmProperty(0.,0.), EmProperty(0.,0.),
-                                TensorComp[], true, channels)
-    computed_line = PhotoExcitation.computeAmplitudesProperties(line, grid, settings, printout=false)
-
-    # Extract oscillator strength (Coulomb gauge) – gives correct magnitude
-    f = computed_line.oscStrength.Coulomb
-    if f <= 0.0
-        return 0.0 + 0.0im
-    end
-
-    # Magnitude from oscillator strength: |d| = sqrt(3f/(2ω))
-    d_mag = sqrt(3 * f / (2 * omega))
-
-    # Extract phase from the raw amplitude of the first E1 Coulomb channel
+    # 5. Extract phase from the first channel's amplitude
     phase = 1.0 + 0.0im
-    for channel in computed_line.channels
-        if channel.multipole == E1 && channel.gauge == Basics.Coulomb
-            amp = channel.amplitude
-            if abs(amp) > 1e-12
-                phase = amp / abs(amp)   # unit complex number (e^{iφ})
-            end
-            break
+    if !isempty( computed_line.channels )
+        amp = computed_line.channels[ 1 ].amplitude
+        println( "Channel 1 amplitude: $amp" )
+        if abs( amp ) > 1e-15
+            phase = amp / abs( amp )
         end
     end
 
-    return d_mag * phase
+    result = d_mag * phase
+    println( "Final dipole ( complex ): $result" )
+    println( "--- end get_oscillator_dipole ---" )
+
+    return result
 end
 
 
-function getDipoleBoundContinuum(boundLevel::Level, contLevel::Level, grid::Radial.Grid, nm::Nuclear.Model)
-    # Energy difference (photon energy)
-    omega = abs(contLevel.energy - boundLevel.energy)
-    if omega < 1e-8
-        return 0.0 + 0.0im
+# function populations_from_tensors(ρ_mat, basis, level_idx, J::Float64)
+#     tensors = basis.level_indices[level_idx]
+#     K_max = Int(round(2J))
+
+#     r_K0 = zeros(Float64, K_max+1)
+#     for K in 0:K_max
+#         if haskey(tensors, (K, 0))
+#             idx = tensors[(K, 0)]
+#             r_K0[K+1] = real(ρ_mat[idx, idx])
+#         end
+#     end
+
+#     m_vals = -J:1.0:J
+#     pops = zeros(Float64, length(m_vals))
+
+#     norm = sqrt(2J + 1)  # Normalization factor for Option 2
+
+#     for (i, m) in enumerate(m_vals)
+#         total = 0.0
+#         for K in 0:K_max
+#             # Use 'm' not 'M' here
+#             threej = wigner3j(J, J, K, m, -m, 0.0)
+#             if abs(threej) > 1e-15
+#                 total += (2K+1) * threej * r_K0[K+1]
+#             end
+#         end
+#         pops[i] = total / norm  # Divide here for Option 2
+#     end
+
+#     return m_vals, pops
+# end
+
+function populations_from_tensors(ρ_mat, basis, level_idx, J::Float64)
+    tensors = basis.level_indices[level_idx]
+    K_max = Int(round(2J))
+    r_K0 = zeros(Float64, K_max+1)
+    for K in 0:K_max
+        if haskey(tensors, (K, 0))
+            idx = tensors[(K, 0)]
+            r_K0[K+1] = real(ρ_mat[idx, idx])
+        end
     end
-
-    # Extract kappa from the continuum level (assuming it contains exactly one extra electron)
-    # This depends on how you build the continuum level; adapt as needed.
-    extraElectrons = Basics.extraElectrons(contLevel.basis, boundLevel.basis)  # you may need a helper
-    if length(extraElectrons) != 1
-        error("Continuum level does not have exactly one extra electron.")
+    m_vals = -J:1.0:J
+    pops = zeros(Float64, length(m_vals))
+    denominator = 2J + 1
+    for (i, m) in enumerate(m_vals)
+        total = 0.0
+        for K in 0:K_max
+            threej = wigner3j(J, J, K, m, -m, 0.0)
+            abs(threej) < 1e-15 && continue
+            phase = (-1.0)^(J - m)
+            total += phase * sqrt(2K+1) * threej * r_K0[K+1]
+        end
+        pops[i] = total / denominator
     end
-    kappa = extraElectrons[1].subshell.kappa
-
-    # Build the photoionization channel
-    sym = LevelSymmetry(contLevel.J, contLevel.parity)
-    channel = PhotoIonization.Channel(E1, Basics.Coulomb, kappa, sym, 0.0, 0.0+0.0im)
-
-    # Compute amplitude
-    amp = PhotoIonization.amplitude("photoionization", channel, omega, contLevel, boundLevel, grid)
-    return amp
+    return m_vals, pops
 end
 
-"""
-`Liouville.initializeCouplingHamiltonianMatrix(scheme::TwoColourScheme, levels::Array{TwoColourLevel,1}, pulses::Array{Pulse.AbstractPulse, 1})`
-    ... initialize the coupling Hamiltonian matrix for two-color XUV+NIR interaction.
-"""
-function initializeCouplingHamiltonianMatrix(scheme::TwoColourScheme, levels::Array{TwoColourLevel,1},
-                                             pulses::Array{Pulse.AbstractPulse,1}, grid::Radial.Grid, nm::Nuclear.Model)
-    noLevels = length(levels)
-    couplingHM = Array{Function,2}(undef, noLevels, noLevels)
-
-    # Create field functions for each pulse
-    field_funcs = []
-    for pulse in pulses
-        if typeof(pulse) == Pulse.GaussianSimplified
-            push!(field_funcs, t -> pulse.A0 * envelope(pulse, t) * cos(pulse.omega * (t - pulse.timeDelay)))
-        else
-            error("Unknown pulse type: $(typeof(pulse))")
-        end
-    end
-
-    total_field_func = t -> begin
-        s = 0.0
-        for f in field_funcs
-            s += f(t)
-        end
-        return s
-    end
-
-    # Precompute dipole elements for bound-bound pairs (optional caching)
-    # We compute them on the fly for simplicity.
-
-    for i in 1:noLevels, j in 1:noLevels
-        if i == j
-            couplingHM[i,j] = t -> 0.0 + 0.0im
-            continue
-        end
-
-        li = levels[i]
-        lj = levels[j]
-
-        # Skip if either level is the dummy loss channel (energy == 0.0)
-        if li.level.energy == 0.0 || lj.level.energy == 0.0
-            couplingHM[i,j] = t -> 0.0 + 0.0im
-            continue
-        end
-
-        dipole = 0.0 + 0.0im
-
-        # Determine whether each level is bound or continuum
-        # We assume li.isContinuum and lj.isContinuum are defined (as Booleans) in TwoColourLevel.
-        # If not yet added, you must add that field to the struct.
-        bound_i = !li.isContinuum
-        bound_j = !lj.isContinuum
-
-        if bound_i && bound_j
-            # Bound-bound coupling (excitation)
-            if li.level.energy < lj.level.energy
-                dipole = getDipoleFromPhotoExcitation(li.level, lj.level, grid)
-            else
-                dipole = conj(getDipoleFromPhotoExcitation(lj.level, li.level, grid))
-            end
-        elseif bound_i && !bound_j
-            # i is bound, j is continuum → ionization from i to j
-            dipole = getDipoleBoundContinuum(li.level, lj.level, grid, nm)
-        elseif !bound_i && bound_j
-            # i is continuum, j is bound → recombination (conjugate of ionization)
-            dipole = conj(getDipoleBoundContinuum(lj.level, li.level, grid, nm))
-        else
-            # Both continuum → free-free transitions (neglected for now)
-            dipole = 0.0 + 0.0im
-        end
-
-        couplingHM[i,j] = t -> -dipole * total_field_func(t)
-    end
-
-    return couplingHM
-end
-
-
-function computeInteractionMatrix(scheme::TwoColourScheme, levels::Array{TwoColourLevel,1})
-    noLevels = length(levels)
-    couplingHM = Array{Function, 2}(undef, noLevels, noLevels)
-
-    # Initialize with zero functions
-    for i = 1:noLevels, j = 1:noLevels
-        couplingHM[i,j] = t -> 0.0 + 0.0im
-    end
-
-    for i = 1:noLevels, j = 1:noLevels
-        if i == j continue end
-
-        # 1. Calculate the static dipole matrix element <i|d|j>
-        # You would use JAC's InteractionMatrix tools here
-        dipoleElement = PhotoIonization.amplitude("multipole: E1", levels[i].level, levels[j].level)
-
-        # 2. Assign the time-dependent coupling
-        # Pulse 1 (XUV) and Pulse 2 (IR)
-        p1 = scheme.pulses[1]
-        p2 = scheme.pulses[2]
-
-        couplingHM[i,j] = t -> dipoleElement * (Pulse.getAmplitude(t, p1) + Pulse.getAmplitude(t, p2))
-    end
-    return couplingHM
-end
-
-"""
-`Liouville.perform(scheme::Liouville.StimulatedTwoColour, computation::Liouville.Computation; output::Bool=true)`
-    ... to perform a Liouville time-evolution computation for a Two Colour scheme. For output=true, a dictionary
-        is returned from which the relevant results can be can easily accessed by proper keys.
-"""
-function perform(scheme::TwoColourScheme, computation::Computation; output::Bool=true)
-    if output    results = Dict{String, Any}()    else    results = nothing    end
-
-    println("")
-    printstyled("Liouville.perform(): Two-Color XUV+NIR computation starts now ... \n", color=:light_green)
-    printstyled("------------------------------------------------------------ \n", color=:light_green)
+function perform_statistical_tensor( scheme::TwoColourScheme, computation::Computation; output::Bool=true )
+    println( "\n" * "="^60 )
+    println( "STATISTICAL TENSOR RABI OSCILLATIONS" )
+    println( "="^60 )
 
     # Convert pulses
     pulses = Pulse.AbstractPulse[]
     for pulse in computation.pulses
-        if typeof(pulse) == Pulse.GaussianSimplified
-            push!(pulses, pulse)
-        elseif typeof(pulse) == Pulse.FelPulse
-            push!(pulses, Pulse.convertPulse(pulse))
+        if typeof( pulse ) == Pulse.GaussianSimplified
+            push!( pulses, pulse )
+        elseif typeof( pulse ) == Pulse.FelPulse
+            push!( pulses, Pulse.convertPulse( pulse ) )
         else
-            error("Unknown pulse = $pulse")
+            error( "Unknown pulse = $pulse" )
         end
     end
 
-    # Atomic structure
-    multiplet = SelfConsistent.performSCF(computation.refConfigs, computation.nuclearModel,
-                                          computation.grid, computation.asfSettings)
+    # Get atomic structure
+    println( "\n📊 Computing atomic structure..." )
+    multiplet = SelfConsistent.performSCF( computation.refConfigs, computation.nuclearModel, computation.grid, computation.asfSettings )
 
     # Initialize levels and density matrix
-    levels = initializeLevels(scheme, multiplet)
-    noLevels = length(levels)
-    densityM = initializeDensityMatrix(levels)
+    levels = initializeLevels( scheme, multiplet )
+    noLevels = length( levels )
+    println( "Number of levels: $noLevels" )
 
-    # Initialize Hamiltonians
-    atomicHM = initializeAtomicHamiltonianMatrix(scheme, levels)
-    couplingHM = initializeCouplingHamiltonianMatrix(scheme, levels, pulses, computation.grid, computation.nuclearModel)
-
-    if computation.settings.printBefore
-        displayDensityMatrix(stdout, levels, densityM)
-        displayGenericHamiltonian(stdout, levels, atomicHM, couplingHM)
+    for ( idx, level ) in enumerate( levels )
+        println( "  Level $idx: $( level.leadingNotation ), energy = $( level.level.energy ) a.u." )
     end
 
-    # Extract NIR pulse
-    nir_pulse = nothing
-    for pulse in pulses
-        if pulse.omega < 0.1
-            nir_pulse = pulse
-            break
+    # Build statistical tensor basis
+    basis = StatisticalTensorBasis( levels )
+    println( basis )
+
+    # Atomic Hamiltonian
+    H0 = zeros( ComplexF64, basis.n_tensors, basis.n_tensors )
+    min_energy = minimum( [ level.level.energy for level in levels ] )
+    for i in 1:basis.n_levels
+        E = basis.level_energies[ i ] - min_energy
+        for idx in values( basis.level_indices[ i ] )
+            H0[ idx, idx ] = E
         end
     end
 
-    if nir_pulse === nothing
-        error("No NIR pulse found in pulses")
-    end
+    # Calculate the dipole using the helper function
+    omega_trans = levels[ 2 ].level.energy - levels[ 1 ].level.energy
+    d_complex = get_oscillator_dipole( levels[ 1 ].level, levels[ 2 ].level, omega_trans, computation.grid )
 
-    nir_omega = nir_pulse.omega
+    println( "==== DIAGNOSTICS ( dipole matrix elements ) ====" )
+    println( d_complex, " ", abs( d_complex ) )
 
-    # Pre‑compute peak ionization rates
-    gamma_peak = zeros(Float64, noLevels)
-    for i in 1:noLevels
-        if levels[i].level.energy < 0.0
-            gamma_peak[i] = get_total_ionization_rate(levels[i].level, nir_omega, computation.nuclearModel, computation.grid)
+    # Convert to real for the Dictionary builder
+    d_reduced_val = abs( d_complex )
+
+    # Map the reduced dipole to the levels
+    reduced_dipoles = Dict( ( 1, 2 ) => d_reduced_val )
+
+    # Build the template
+    H_interaction_template = build_coupling_hamiltonian( basis, reduced_dipoles, 1.0, 0 )
+
+    # After building H_interaction_template
+    println("============================> ", size(H_interaction_template), " <============================" )
+
+    # Add this debug block:
+    println("\n=== Checking excited state intra-level couplings ===")
+    for idx in [5,6,7,8]  # Indices for excited state (level 2)
+        for jdx in [5,6,7,8]
+            if idx != jdx && abs(H_interaction_template[idx, jdx]) > 1e-10
+                println("  H[$idx,$jdx] = ", H_interaction_template[idx, jdx])
+            end
         end
     end
 
-    # Store results (no ODE solving here)
-    if output
-        results["levels"] = levels
-        results["initial_density"] = densityM
-        results["pulses"] = computation.pulses
-        results["atomic_hamiltonian"] = atomicHM
-        results["coupling_hamiltonian"] = couplingHM
-        results["gamma_peak"] = gamma_peak
-        results["nir_pulse"] = nir_pulse
+    # Also check couplings from excited K=1 to excited K=0 specifically:
+    println("\n=== Specific couplings to excited K=0 (index 5) ===")
+    for idx in [6,7,8]
+        if abs(H_interaction_template[5, idx]) > 1e-10
+            println("  H[5,$idx] = ", H_interaction_template[5, idx])
+            println("  H[$idx,5] = ", H_interaction_template[idx, 5])
+        end
     end
 
-    println("\n> Two-Color computation setup complete ...")
+    println("============================> ------------------ <============================" )
+
+
+    # After building H_interaction_template
+    println("\n=== COUPLING STRENGTH CHECK ===")
+    peak_field = fix_field_amplitude(pulses[1])
+    println("Peak field: $peak_field")
+    println("Reduced dipole: $d_reduced_val")
+    rabi_freq = abs(d_reduced_val * peak_field)
+    println("Rabi frequency: $rabi_freq Hz (atomic units: $rabi_freq a.u.)")
+    println("Rabi period: $(2π/rabi_freq) a.u.")
+
+    # Check if any coupling exists between ground and excited state tensors
+    g_tensors = basis.level_indices[1]
+    e_tensors = basis.level_indices[2]
+    println("\nGround state tensors: $g_tensors")
+    println("Excited state tensors: $e_tensors")
+
+    for ((k1,q1), idx1) in g_tensors
+        for ((k2,q2), idx2) in e_tensors
+            val = H_interaction_template[idx1, idx2]
+            if abs(val) > 1e-10
+                println("Coupling: (K=$k1,Q=$q1) <-> (K=$k2,Q=$q2): $val")
+            end
+        end
+    end
+
+    println( "\n" * "="^60 )
+    println( "DIAGNOSTICS" )
+    println( "="^60 )
+
+    println( "Number of levels: ", basis.n_levels )
+    println( "Number of tensors: ", basis.n_tensors )
+    println( "Reduced dipole value: ", d_reduced_val )
+    println( "" )
+
+    # Print level structure
+    println( "Level J values: ", basis.level_J )
+    println( "Level energies: ", basis.level_energies )
+    println( "" )
+
+    # Print tensor indices for each level
+    for i in 1:basis.n_levels
+        println( "Level $i tensors:" )
+        for ( ( K,Q ), idx ) in basis.level_indices[ i ]
+            println( "  K=$K, Q=$Q -> global index $idx" )
+        end
+    end
+
+    # Check what the coupling builder sees
+    println( "\nTesting coupling for q=0, E=1.0:" )
+    for i in 1:basis.n_levels
+        for j in i+1:basis.n_levels
+            key = ( i, j )
+            if haskey( reduced_dipoles, key )
+                println( "  Dipole( $i,$j ) = $( reduced_dipoles[ key ] )" )
+            else
+                println( "  No dipole for ( $i,$j )" )
+            end
+
+            # Check tensor compatibility
+            tensors_i = basis.level_indices[ i ]
+            tensors_j = basis.level_indices[ j ]
+            println( "    Level $i has $( length( tensors_i ) ) tensors, Level $j has $( length( tensors_j ) ) tensors" )
+
+            for ( key_i, idx_i ) in tensors_i
+                for ( key_j, idx_j ) in tensors_j
+                    K_i, Q_i = key_i
+                    K_j, Q_j = key_j
+                    if abs( K_j - K_i ) <= 1 && Q_j == Q_i + 0
+                        println( "    Compatible: ( $K_i,$Q_i )->( $K_j,$Q_j )" )
+                    end
+                end
+            end
+        end
+    end
+
+    # Count non-zeros properly
+    nz = 0
+    for i in 1:size( H_interaction_template,1 )
+        for j in 1:size( H_interaction_template,2 )
+            if abs( H_interaction_template[ i,j ] ) > 1e-15
+                nz += 1
+            end
+        end
+    end
+
+    println( "\nNon-zero elements in H_template: $nz" )
+    # Get pulse and define coupling
+    pulse = computation.pulses[ 1 ]
+    if typeof( pulse ) == Pulse.FelPulse
+        pulse = Pulse.convertPulse( pulse )
+    end
+
+    # Get pulse
+    pulse = computation.pulses[ 1 ]
+    if typeof( pulse ) == Pulse.FelPulse
+        pulse = Pulse.convertPulse( pulse )
+    end
+
+    function coupling_func( t )
+        return H_interaction_template .* pulseFunction( pulse, t )
+    end
+
+    # Convert J from an AngularJ64 object to a number ( e.g., 1/2 -> 0.5 )
+    J_g_val = levels[ 1 ].level.J.num / levels[ 1 ].level.J.den
+
+    ρ0 = zeros( ComplexF64, basis.n_tensors, basis.n_tensors )
+    idx_g00 = basis.level_indices[ 1 ][ ( 0,0 ) ]
+
+    # Use the numeric value for the calculation
+    ρ0[ idx_g00, idx_g00 ] = sqrt( 2 * J_g_val + 1 )
+
+    # After building H_interaction_template, add these diagnostics:
+
+    println( "\n" * "="^60 )
+    println( "DIAGNOSTICS" )
+    println( "="^60 )
+
+    # 1. Check if template has non-zero elements
+    non_zero = count( !iszero, H_interaction_template )
+    println( "Non-zero elements in H_template: $non_zero out of $( basis.n_tensors^2 )" )
+
+    # 2. Check coupling between ground and excited state
+    println( "\nTemplate coupling elements:" )
+    println( "  H_template norm: ", LinearAlgebra.norm( H_interaction_template ) )
+
+    # 3. Check peak field and Rabi frequency
+    peak_field = fix_field_amplitude( pulse )
+    println( "\nPeak field amplitude: $peak_field a.u." )
+    println( "Reduced dipole: $d_reduced_val a.u." )
+    println( "Peak Rabi frequency: $( abs( d_reduced_val * peak_field ) ) a.u." )
+    println( "Rabi period: $( 2π / abs( d_reduced_val * peak_field ) ) a.u." )
+
+    # 4. Print some matrix elements to verify structure
+    println( "\nSample matrix elements:" )
+    for i in 1:min( 10, basis.n_tensors )
+        for j in 1:min( 10, basis.n_tensors )
+            if abs( H_interaction_template[ i,j ] ) > 1e-10
+                println( "  H[ $i,$j ] = ", H_interaction_template[ i,j ] )
+            end
+        end
+    end
+
+    # 5. Check initial density matrix
+    println( "\nInitial density matrix ( first 10x10 ):" )
+    for i in 1:min( 10, basis.n_tensors )
+        for j in 1:min( 10, basis.n_tensors )
+            if abs( ρ0[ i,j ] ) > 1e-10
+                println( "  ρ0[ $i,$j ] = ", ρ0[ i,j ] )
+            end
+        end
+    end
+
+    # 6. Verify level indices
+    println( "\nLevel indices:" )
+    for ( i, idx_dict ) in enumerate( basis.level_indices )
+        println( "  Level $i ( J=$( basis.level_J[ i ] ), E=$( basis.level_energies[ i ] ) ):" )
+        for ( ( K,Q ), idx ) in sort( collect( idx_dict ), by=x->x[ 2 ] )
+            println( "    K=$K, Q=$Q -> index $idx" )
+        end
+    end
+
+    # 7. Check Hamiltonian at peak field
+    H_peak = H0 + H_interaction_template .* peak_field
+    println( "\nTotal H at peak ( first 10x10 ):" )
+    for i in 1:min( 10, basis.n_tensors )
+        row_str = ""
+        for j in 1:min( 10, basis.n_tensors )
+            if abs( H_peak[ i,j ] ) > 1e-10
+                row_str *= " $( round( H_peak[ i,j ], digits=6 ) )"
+            end
+        end
+        if row_str != ""
+            println( "  Row $i:$row_str" )
+        end
+    end
+
+    #  Run time evolution
+    t_max = pulse.timeDelay + 2 * pulse.fwhm + 100.0
+    dt = 0.1
+    tspan = (0.0, t_max)
+    println("\n⏱️ Running time evolution: t_max = $t_max, dt = $dt")
+    times, ρ_history = solve_liouville_tensor(basis, H0, coupling_func, ρ0, tspan, dt)
+
+    # ============================================================
+    # 🟢 NOW process the results – ρ_history is defined here
+    # ============================================================
+
+    # Define J values as Float64
+    J_g_val = levels[1].level.J.num / levels[1].level.J.den
+    J_e_val = levels[2].level.J.num / levels[2].level.J.den
+    idx_g00 = basis.level_indices[1][(0,0)]
+
+    # Storage
+    pop_ground = zeros(length(times))
+    # Get m values for excited state (from first snapshot)
+    m_vals, _ = populations_from_tensors(ρ_history[1], basis, 2, J_e_val)
+    n_m = length(m_vals)
+    pop_excited_m = zeros(length(times), n_m)
+
+    # Loop over time steps
+    for (i, ρ) in enumerate(ρ_history)
+        # Ground state population
+        pop_ground[i] = real(ρ[idx_g00, idx_g00]) / sqrt(2*J_g_val + 1)
+        # Excited state m-resolved populations
+        _, pops = populations_from_tensors(ρ, basis, 2, J_e_val)
+        pop_excited_m[i, :] = pops
+    end
+
+    # Save to file
+    data = hcat(times, pop_ground, pop_excited_m)
+    writedlm("m_resolved_populations.dat", data, '\t')
+    println("\n✅ Data saved to m_resolved_populations.dat")
+
+    # (Optional) Print final populations
+    println("\n=== Final Populations ===")
+    println("  Ground: $(round(pop_ground[end], digits=6))")
+    for (j, m) in enumerate(m_vals)
+        println("  Excited m=$m: $(round(pop_excited_m[end,j], digits=6))")
+    end # Time evolution
+
+
+    # Save data: columns = time, ground_pop, pop(m=-J), pop(m=-J+1), ..., pop(m=+J)
+    data = hcat(times, pop_ground, pop_excited_m)
+    writedlm("stat_tensor_data.dat", data, '\t')   # or keep old filename
+    println("\n✅ Data saved to stat_tensor_data.dat")
+
+    # Print final populations
+    println("\n=== Final Populations ===")
+    println("  Ground: $(round(pop_ground[end], digits=6))")
+    for (j, m) in enumerate(m_vals)
+        println("  Excited m=$m: $(round(pop_excited_m[end, j], digits=6))")
+    end
+    # Also print total excited population (optional)
+    total_excited = sum(pop_excited_m[end, :])
+    println("  Total excited: $(round(total_excited, digits=6))")
+
+    # Store in results dictionary
+    results = Dict{String, Any}()
+    results["times"] = times
+    results["pop_ground"] = pop_ground
+    results["pop_excited_m"] = pop_excited_m
+    results["m_vals"] = m_vals
+    # If you still want a combined "populations" array for compatibility, you can make one:
+    populations_compat = hcat(pop_ground, sum(pop_excited_m, dims=2))
+    results["populations"] = populations_compat   # optional
+
+    # Debug prints (keep as is)
+    gap = levels[2].level.energy - levels[1].level.energy
+    println("DEBUG: Pulse Frequency  = $(pulse.omega)")
+    println("DEBUG: Atomic Energy Gap = $gap")
+    println("DEBUG: Detuning          = $(pulse.omega - gap)")
 
     return results
-end
-
-"""
-`Liouville.displayGenericHamiltonian(stream, levels::Array{TwoColourLevel,1}, atomicHM::Matrix{ComplexF64},
-                                     couplingHM::Array{Function, 2})`
-    ... Display the Hamiltonian matrices at a sample time t=0.1.
-"""
-function displayGenericHamiltonian(stream, levels::Array{TwoColourLevel,1}, atomicHM::Matrix{ComplexF64},
-                                   couplingHM::Array{Function, 2})
-    noLevels = length(levels)
-    t = 0.0  # XUV peaks at t=0
-
-    totalHamiltonian = [t -> couplingHM[i,j](t) + atomicHM[i,j] for i in 1:noLevels, j in 1:noLevels]
-    totalH = [f(t) for f in totalHamiltonian]
-
-    println(stream, " ")
-    println(stream, "  Two-Color Hamiltonian matrix (atomic + coupling), evaluated for t=$t:")
-    println(stream, " ")
-    for (idx, level) in enumerate(levels)
-        sa = "       " * string(idx) * ")  "
-        sa = sa * string(level.leadingConfig) * "   "
-        sa = sa * string(level.leadingNotation) * "                          "
-        if length(sa) >= 70
-            sa = sa[1:70]
-        end
-        row = totalH[idx, :]
-        for z in row
-            # Change from %8.6f to %10.8f to see more decimal places
-            sa = sa * @sprintf("%10.8f %+10.8fim  ", real(z), imag(z))
-        end
-        println(sa)
-    end
-    println(stream, " ")
-    return nothing
-end
-
-
-"""
-`Liouville.testDipole()`
-    ... test function to verify dipole calculation between 1s and 2p levels.
-"""
-function testDipole()
-    println("\n=== Testing Dipole Calculation ===")
-
-    # Setup
-    nm = Nuclear.Model(2.0)
-    grid = Radial.Grid(true)
-    refConfigs = [Configuration("1s"), Configuration("2p")]
-    asfSettings = AsfSettings()
-
-    # Compute multiplet
-    multiplet = SelfConsistent.performSCF(refConfigs, nm, grid, asfSettings)
-
-    # Get 1s and 2p levels
-    level1s = nothing
-    level2p = nothing
-
-    for level in multiplet.levels
-        if occursin("1s", string(level.configuration))
-            level1s = level
-            println("Found 1s: J=$(level.J), parity=$(level.parity), energy=$(level.energy)")
-        elseif occursin("2p", string(level.configuration))
-            level2p = level
-            println("Found 2p: J=$(level.J), parity=$(level.parity), energy=$(level.energy)")
-        end
-    end
-
-    if level1s !== nothing && level2p !== nothing
-        dipole = getDipoleFromPhotoExcitation(level1s, level2p, grid)
-        println("Dipole moment (1s → 2p): $dipole a.u.")
-    else
-        println("Could not find 1s and 2p levels")
-    end
-end
-
-
-function testField()
-    println("\n=== Testing Field Magnitude ===")
-
-    xuv_pulse = Pulse.FelPulse("GaussianSimplified", 21.0, 1e12, 10.0, 0.0, 0.1)
-    nir_pulse = Pulse.FelPulse("GaussianSimplified", 1.55, 1e14, 10.0, 10.0, 0.1)
-
-    xuv_comp = Pulse.convertPulse(xuv_pulse)
-    nir_comp = Pulse.convertPulse(nir_pulse)
-
-    println("XUV peak at t = $(xuv_comp.timeDelay) a.u.")
-    println("NIR peak at t = $(nir_comp.timeDelay) a.u.")
-
-    for t in [0.0, 100.0, 200.0, 300.0, 400.0, 413.4, 500.0]
-        E_xuv = xuv_comp.A0 * envelope(xuv_comp, t) * cos(xuv_comp.omega * (t - xuv_comp.timeDelay))
-        E_nir = nir_comp.A0 * envelope(nir_comp, t) * cos(nir_comp.omega * (t - nir_comp.timeDelay))
-        println("t = $t: E_xuv = $E_xuv, E_nir = $E_nir, total = $(E_xuv + E_nir)")
-    end
-end
-
-function evaluateHamiltonianMatrix(t, atomicHM, couplingHM)
-    n = size(atomicHM, 1)
-    H = copy(atomicHM)
-    for i in 1:n, j in 1:n
-        H[i,j] += couplingHM[i,j](t)
-    end
-    return H
-end
-
-
-function get_total_ionization_rate(level::Level, omega::Float64, nm::Nuclear.Model, grid::Radial.Grid)
-    Ji = level.J
-    parity_i = level.parity
-
-    # Convert Ji to Float64 for arithmetic
-    Ji_float = Float64(Ji)
-
-    # Choose final J such that ΔJ = 0, ±1 (but not 0→0)
-    if Ji_float == 0.0
-        Jf = AngularJ64(1, 1)   # J = 1
-    elseif Ji_float == 0.5
-        Jf = AngularJ64(1, 2)   # J = 1/2 (ΔJ=0)
-    else
-        Jf = AngularJ64(Int(2*Ji_float + 2), 2)   # J = Ji + 1
-    end
-
-    # Flip parity correctly
-    if parity_i == Basics.plus
-        parity_f = Basics.minus
-    else
-        parity_f = Basics.plus
-    end
-
-    dummy_level = Level(Jf, AngularM64(0), parity_f, 0, 0.0, 0.0, false, Basis(), Float64[])
-    dummy_multiplet = Multiplet("dummy", [dummy_level])
-    initial_multiplet = Multiplet("initial", [level])
-
-    settings = PhotoIonization.Settings(
-        [E1], [UseCoulomb], [omega], Float64[], Float64[], Float64[],
-        false, false, false, false, false, false, LineSelection(),
-        Basics.ExpStokes(), 0.0, [0,1,2,3,4,5]
-    )
-
-    lines = PhotoIonization.determineLines(dummy_multiplet, initial_multiplet, settings)
-    if isempty(lines)
-        return 0.0
-    end
-    line = lines[1]
-    computed_line = PhotoIonization.computeAmplitudesProperties(line, nm, grid, 100, settings, printout=false)
-
-    return computed_line.crossSection.Coulomb
 end

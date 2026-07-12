@@ -34,28 +34,32 @@ end
 
 
 """
-`Basics.integrate()`  
-    ... integrates a one- or two-dimensional function by different numerical methods, either on a given grid or for a general function.
-
-+ `("function: on radial grid, Newton-Cotes", F::Array{Float64,1}, grid::Radial.Grid)`  
-    ... to integrate the (radial) function F over the given (radial) grid, int_0^infinity dr F(r) by using a 5-point Newton-Cotes 
-        integration formula; a value::Float64 is returned.   
-
-+ `("function: on radial grid, Simpson rule", F::Array{Float64,1}, grid::Radial.Grid)`  
-    ... to integrate the (radial) function F over the given (radial) grid, int_0^infinity dr F(r) by using Simpson's rule; 
-        a value::Float64 is returned. 
-
-+ `("function: on radial grid, trapez rule", F::Array{Float64,1}, grid::Radial.Grid)`  
-    ... to integrate the (radial) function F over the given (radial) grid, int_0^infinity dr F(r), by using a simple trapez rule; 
-        a value::Float64 is returned. 
+`Basics.integrate(::NewtonCotes, F::Array{Float64,1}, grid::Radial.Grid)`
+    ... to integrate the (radial) function F over the given (radial) grid, int_0^infinity dr F(r), by using
+        a 5-point Newton-Cotes integration formula; a value::Float64 is returned.
 """
-function Basics.integrate(sa::String, F::Array{Float64,1}, grid::Radial.Grid)
-    if       sa == "function: on radial grid, Newton-Cotes"     wa = integrateOnGridNewtonCotes(F, grid)   
-    elseif   sa == "function: on radial grid, Simpson rule"     wa = integrateOnGridSimpsonRule(F, grid)
-    elseif   sa == "function: on radial grid, trapez rule"      wa = integrateOnGridTrapezRule( F, grid)   
-    else     error("Unsupported keystring = $sa.")
-    end
-    
+function Basics.integrate(::NewtonCotes, F::Array{Float64,1}, grid::Radial.Grid)
+    return integrateOnGridNewtonCotes(F, grid)
+end
+
+
+"""
+` + Basics.integrate(::SimpsonRule, F::Array{Float64,1}, grid::Radial.Grid)`
+    ... to integrate the (radial) function F over the given (radial) grid, int_0^infinity dr F(r), by using
+        Simpson's rule; a value::Float64 is returned.
+"""
+function Basics.integrate(::SimpsonRule, F::Array{Float64,1}, grid::Radial.Grid)
+    return integrateOnGridSimpsonRule(F, grid)
+end
+
+
+"""
+` + Basics.integrate(::TrapezRule, F::Array{Float64,1}, grid::Radial.Grid)`
+    ... to integrate the (radial) function F over the given (radial) grid, int_0^infinity dr F(r), by using
+        a simple trapezoid rule; a value::Float64 is returned.
+"""
+function Basics.integrate(::TrapezRule, F::Array{Float64,1}, grid::Radial.Grid)
+    return integrateOnGridTrapezRule(F, grid)
 end
 
 
@@ -227,7 +231,6 @@ function Basics.isViolated(conf::Configuration, restriction::AbstractConfigurati
         end
         if  dis > restriction.maxDisplace                                                      wa = true   end
     elseif  typeof(restriction) == RestrictParity
-        ##x if  Basics.determineParity(conf) != restriction.parity    wa = true   end
         if  Basics.extractFromConfiguration(Basics.GetParity(), conf) != restriction.parity    wa = true   end
     elseif  typeof(restriction) == RestrictToShellDoubles
         for (sh,v) in  conf.shells
@@ -425,8 +428,6 @@ function Basics.modifyLevelMixing(level::Level, enhancementFaktor::Float64)
     wx  = 0.;          for  mc  in  mcx   wx = wx + abs(mc)^2         end
     mcy = Float64[];   for  mc  in  mcx   push!(mcy, mc / sqrt(wx))   end
     wy  = 0.;          for  mc  in  mcy   wy = wy + abs(mc)^2         end
-    ##x @show  " ", level.mc
-    ##x @show  mcy, wx, wy
     
     newLevel = Level(level.J, level.M, level.parity, level.index, level.energy, level.relativeOcc, 
                      level.hasStateRep, level.basis, mcy)
@@ -440,19 +441,16 @@ end
 using RecipesBase
 
 """
-`Basics.plot()`  ... plots various quantities, often in a new window.
-
-+ `("radial potentials", potentials::Array{Radial.Potential,1}, grid::Radial.Grid; N::Int64 = 0)`  
-    ... to plot one or more radial potentials, and where N::Int64 describes the number of grid points to be considered.
+`Basics.plot(::RadialPotentials, potentials::Array{Radial.Potential,1}, grid::Radial.Grid; N::Int64 = 0)`
+    ... to plot one or more radial potentials, where N::Int64 is the number of grid points to be considered.
         call:  using Plots; pyplot()    ... to access this method by plot(...)
 """
-function Basics.plot(sa::String, potentials::Array{Radial.Potential,1}, grid::Radial.Grid; N::Int64 = 0)   
+function Basics.plot(::RadialPotentials, potentials::Array{Radial.Potential,1}, grid::Radial.Grid; N::Int64 = 0)
     error("call instead:  using Plots; pyplot()    ... to access this method simply by plot(...)")
 end
 
 
-@recipe function f(sa::String, potentials::Array{Radial.Potential,1}, grid::Radial.Grid; N = 0)
-    !(sa == "radial potentials")   &&   error("Unsupported keystring = $sa")
+@recipe function f(::RadialPotentials, potentials::Array{Radial.Potential,1}, grid::Radial.Grid; N = 0)
     wa = Float64[];   wc = [NaN for i=1:N];   labels = String[];   np = length(potentials)
     for  pot in potentials
         wb = wc
@@ -466,83 +464,82 @@ end
 end
 
 
-
 """
-+ `("radial orbitals: large", orbitals::Array{Radial.Orbital,1}, grid::Radial.Grid; N::Int64 = 0)`  
-    ... to plot the large component of one or more radial orbitals, and where N::Int64 describes the number of grid 
-        points to be considered.
-+ `("radial orbitals: small", orbitals::Array{Radial.Orbital,1}, grid::Radial.Grid; N::Int64 = 0)`  
+`Basics.plot(::RadialOrbitalsLarge, orbitals::Array{Radial.Orbital,1}, grid::Radial.Grid; N::Int64 = 0)`
+    ... to plot the large component of one or more radial orbitals, where N::Int64 is the number of grid points.
+        call:  using Plots; pyplot()    ... to access this method by plot(...)
+
+`Basics.plot(::RadialOrbitalsSmall, orbitals::Array{Radial.Orbital,1}, grid::Radial.Grid; N::Int64 = 0)`
     ... to plot the small component of one or more radial orbitals.
-+ `("radial orbitals: both",  orbitals::Array{Radial.Orbital,1}, grid::Radial.Grid; N::Int64 = 0)`  
-    ... to plot the large and small component of one or more radial orbitals.
 
-    call:  using Plots; pyplot()    ... to access this method by plot(...)
+`Basics.plot(::RadialOrbitalsBoth, orbitals::Array{Radial.Orbital,1}, grid::Radial.Grid; N::Int64 = 0)`
+    ... to plot both the large and small component of one or more radial orbitals.
 """
-function Basics.plot(sa::String, orbitals::Array{Radial.Orbital,1}, grid::Radial.Grid; N = 0)
+function Basics.plot(::RadialOrbitalsLarge, orbitals::Array{Radial.Orbital,1}, grid::Radial.Grid; N = 0)
+    error("call instead:  using Plots; pyplot()    ... to access this method simply by plot(...)")
+end
+
+function Basics.plot(::RadialOrbitalsSmall, orbitals::Array{Radial.Orbital,1}, grid::Radial.Grid; N = 0)
+    error("call instead:  using Plots; pyplot()    ... to access this method simply by plot(...)")
+end
+
+function Basics.plot(::RadialOrbitalsBoth, orbitals::Array{Radial.Orbital,1}, grid::Radial.Grid; N = 0)
     error("call instead:  using Plots; pyplot()    ... to access this method simply by plot(...)")
 end
 
 
-@recipe function f(sa::String, orbitals::Array{Radial.Orbital,1}, grid::Radial.Grid; N = 0)
+@recipe function f(::RadialOrbitalsLarge, orbitals::Array{Radial.Orbital,1}, grid::Radial.Grid; N = 0)
     wa = Float64[];   wc = [NaN for i=1:N];   labels = String[];   np = length(orbitals)
-
-    if       sa == "radial orbitals: large"
-        for  orb in orbitals
-            wb = wc
-            nx = min(length(orb.P), N);   wb[1:nx] = orb.P[1:nx]
-            append!(wa, wb)
-            push!(labels, "$(orb.subshell):large")
-        end
-        x = grid.r[1:N];     y = reshape(wa, (N, np))
-
-    elseif   sa == "radial orbitals: small"
-        for  orb in orbitals
-            wb = wc
-            nx = min(length(orb.Q), N);   wb[1:nx] = orb.Q[1:nx]
-            append!(wa, wb)
-            push!(labels, "$(orb.subshell):small")
-        end
-        x = grid.r[1:N];     y = reshape(wa, (N, np))
-
-    elseif   sa == "radial orbitals: both"
-        for  orb in orbitals
-            wb = wc;    nx = min(length(orb.P), N);   wb[1:nx] = orb.P[1:nx];    append!(wa, wb)
-            wb = wc;    nx = min(length(orb.Q), N);   wb[1:nx] = orb.Q[1:nx];    append!(wa, wb)
-            push!(labels, "$(orb.subshell):large");   push!(labels, "$(orb.subshell):small")
-        end
-            x = grid.r[1:N];     y = reshape(wa, (N, 2np))
-
-    else   error("Unsupported keystring = $sa") 
+    for  orb in orbitals
+        wb = wc
+        nx = min(length(orb.P), N);   wb[1:nx] = orb.P[1:nx]
+        append!(wa, wb)
+        push!(labels, "$(orb.subshell):large")
     end
+    x = grid.r[1:N];     y = reshape(wa, (N, np))
+    label --> permutedims(labels)
+    x, y
+end
+
+@recipe function f(::RadialOrbitalsSmall, orbitals::Array{Radial.Orbital,1}, grid::Radial.Grid; N = 0)
+    wa = Float64[];   wc = [NaN for i=1:N];   labels = String[];   np = length(orbitals)
+    for  orb in orbitals
+        wb = wc
+        nx = min(length(orb.Q), N);   wb[1:nx] = orb.Q[1:nx]
+        append!(wa, wb)
+        push!(labels, "$(orb.subshell):small")
+    end
+    x = grid.r[1:N];     y = reshape(wa, (N, np))
+    label --> permutedims(labels)
+    x, y
+end
+
+@recipe function f(::RadialOrbitalsBoth, orbitals::Array{Radial.Orbital,1}, grid::Radial.Grid; N = 0)
+    wa = Float64[];   wc = [NaN for i=1:N];   labels = String[];   np = length(orbitals)
+    for  orb in orbitals
+        wb = wc;    nx = min(length(orb.P), N);   wb[1:nx] = orb.P[1:nx];    append!(wa, wb)
+        wb = wc;    nx = min(length(orb.Q), N);   wb[1:nx] = orb.Q[1:nx];    append!(wa, wb)
+        push!(labels, "$(orb.subshell):large");   push!(labels, "$(orb.subshell):small")
+    end
+    x = grid.r[1:N];     y = reshape(wa, (N, 2np))
     label --> permutedims(labels)
     x, y
 end
 
 
-
 """
-+ `("spectrum: transition rates over energy", lines::Array{PhotoEmission.Line,1})`  
-    ... to plot the transition rates of all lines as function of their transition energies. The plot is shown in a new 
-        window but nothing is returned otherwise. **Not yet implemented !**
-
-+ `("spectrum: oscillator strength over energy, emission", lines::Array{PhotoEmission.Line,1})` or
-    `("spectrum: oscillator strength over energy, absorption", lines::Array{PhotoEmission.Line,1})` 
-    ... to plot the absorption oscillator strength of all lines as function of their transition energies. Again, a new 
-        window is opened but nothing returned by this method. **Not yet implemented !**
+`Basics.plot(theme::AbstractPlotTheme, lines::Array{PhotoEmission.Line,1})`
+    ... to plot transition rates or oscillator strengths as function of transition energies. **Not yet implemented.**
 """
-function Basics.plot(sa::String, lines::Array{PhotoEmission.Line,1})
+function Basics.plot(theme::AbstractPlotTheme, lines::Array{PhotoEmission.Line,1})
     error("call instead:  using Plots; pyplot()    ... to access this method simply by plot(...) ... not yet implemented !")
 end
 
 
-
 """
-+ `("spectrum: transition rates over energy, Gaussian", lines::Array{PhotoEmission.Line,1}; widths=value::Float64)` or
-    `("spectrum: transition rates over energy, Lorentzian", lines::Array{PhotoEmission.Line,1}; widths=value::Float64)`
-    ... to plot the transition rates of all lines as function of their transition energies but with a Gaussian or Lorentzian 
-        distribution. Again, a new window is opened but nothing returned by this method. It still need to be decided how 
-        the widths (and, perhaps, other parameters) will be communicated to the method. **Not yet implemented !**
+`Basics.plot(theme::AbstractPlotTheme, lines::Array{PhotoEmission.Line,1}, widths::Float64)`
+    ... to plot transition rates with Gaussian or Lorentzian broadening. **Not yet implemented.**
 """
-function Basics.plot(sa::String, lines::Array{PhotoEmission.Line,1}, widths::Float64)
+function Basics.plot(theme::AbstractPlotTheme, lines::Array{PhotoEmission.Line,1}, widths::Float64)
     error("call instead:  using Plots; pyplot()    ... to access this method simply by plot(...) ... not yet implemented !")
 end

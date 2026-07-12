@@ -5,7 +5,7 @@
 """
 module InteractionStrengthQED
 
-using Printf, ..Basics, ..BsplinesN, ..Defaults, ..HydrogenicIon, ..ManyElectron, ..Radial, ..RadialIntegrals, ..Nuclear
+using Printf, ..Basics, ..Bsplines, ..Defaults, ..HydrogenicIon, ..ManyElectron, ..Radial, ..RadialIntegrals, ..Nuclear
 
 #                   Z/10       1s_1/2      2p_1/2      2p_3/2      3d_3/2      3d_5/2        Zi
 const   fez_qed =         [    4.6542     -0.1148      0.1304     -0.0427      0.0408   ;   #  10
@@ -33,7 +33,7 @@ const   fez_qed =         [    4.6542     -0.1148      0.1304     -0.0427      0
 function qedLocal(a::Orbital, b::Orbital, nm::Nuclear.Model, qed::ManyElectron.AbstractQedModel, 
                     pot::Radial.Potential, grid::Radial.Grid)
     # Define a grid for the t-integration
-    qgrid = Radial.GridGL("QED",  7)
+    qgrid = Radial.GridGL(Radial.GridGaussLegendreQED(),  7)
     if  a.subshell == b.subshell == Subshell("1s_1/2")    println(" ")    end
     # Re-define the hydrogenic values of the 
     if  nm.Z != Defaults.GBL_QED_NUCLEAR_CHARGE

@@ -97,7 +97,7 @@ end
 `ParticleScattering.Settings()`  ... constructor for the default ParticleScattering.Settings.
 """
 function Settings()
-    Settings(ElasticElectron(), PlaneWave(), LinearX(), Float64[], Float64[], Float64[], Vector{Float64}[], false, LineSelection(), 2)
+    Settings(ElasticElectronNR(), Beam.PlaneWave(), LinearPolarization(), Float64[], Float64[], Float64[], Vector{Float64}[], false, LineSelection(), 2.)
 end
 
 
@@ -119,16 +119,16 @@ function Settings(set::ParticleScattering.Settings;
     printBefore::Union{Nothing,Bool}=nothing, 
     lineSelection::Union{Nothing,LineSelection}=nothing,        epsPartialWave::Union{Nothing,Float64}=nothing)  
     
-    if  processTypey   == nothing   processTypex    = set.processType       else  processTypex    = processType       end
-    if  beamType       == nothing   beamTypex       = set.beamType          else  beamTypex       = beamType          end
-    if  polarization   == nothing   polarizationx   = set.polarization      else  polarizationx   = polarization      end
-    if  impactEnergies == nothing   impactEnergiesx = set.impactEnergies    else  impactEnergiesx = impactEnergies    end
-    if  polarThetas    == nothing   polarThetasx    = set.polarThetas       else  polarThetasx    = polarThetas       end
-    if  polarPhis      == nothing   polarPhisx      = set.polarPhis         else  polarPhisx      = polarPhis         end
-    if  bVectors       == nothing   bVectorsx       = set.bVectors          else  bVectorsx       = bVectors          end
-    if  printBefore    == nothing   printBeforex    = set.printBefore       else  printBeforex    = printBefore       end 
-    if  lineSelection  == nothing   lineSelectionx  = set.lineSelection     else  lineSelectionx  = lineSelection     end 
-    if  epsPartialWave == nothing   epsPartialWavex = set.epsPartialWave    else  epsPartialWavex = epsPartialWave    end
+    if  isnothing(processTypey)     processTypex    = set.processType       else  processTypex    = processType       end
+    if  isnothing(beamType)         beamTypex       = set.beamType          else  beamTypex       = beamType          end
+    if  isnothing(polarization)     polarizationx   = set.polarization      else  polarizationx   = polarization      end
+    if  isnothing(impactEnergies)   impactEnergiesx = set.impactEnergies    else  impactEnergiesx = impactEnergies    end
+    if  isnothing(polarThetas)      polarThetasx    = set.polarThetas       else  polarThetasx    = polarThetas       end
+    if  isnothing(polarPhis)        polarPhisx      = set.polarPhis         else  polarPhisx      = polarPhis         end
+    if  isnothing(bVectors)         bVectorsx       = set.bVectors          else  bVectorsx       = bVectors          end
+    if  isnothing(printBefore)      printBeforex    = set.printBefore       else  printBeforex    = printBefore       end 
+    if  isnothing(lineSelection)    lineSelectionx  = set.lineSelection     else  lineSelectionx  = lineSelection     end 
+    if  isnothing(epsPartialWave)   epsPartialWavex = set.epsPartialWave    else  epsPartialWavex = epsPartialWave    end
 
     Settings( processTypex, beamTypex, polarizationx, impactEnergiesx, polarThetasx, polarPhisx, bVectorsx, 
               printBeforex, lineSelectionx, epsPartialWavex )
@@ -255,7 +255,6 @@ function amplitude(processType::ElasticElectronNR, beamType::Beam.PlaneWave,
         amplitude = 4pi * amplitude / beamType.kz
     else  error("stop a")
     end
-    ##x @show processType, beamType, l, amplitude
     
     return( amplitude )
 end
@@ -315,7 +314,6 @@ function amplitude(processType::ElasticElectronNR, beamType::Beam.BesselBeam, nu
                     wa * wc * AngularMomentum.sphericalYlm(l, beamType.mOAM+nu, theta, phi) * sin(lPhase)
         amplitude = amplitude + ComplexF64(wb)
     end
-    ##x @show processType, beamType, l, amplitude, typeof(amplitude)
     
     return( amplitude )
 end
@@ -587,7 +585,6 @@ function  determineEventsNR(finalMultiplet::Multiplet, initialMultiplet::Multipl
     for  iLevel  in  initialMultiplet.levels
         for  fLevel  in  finalMultiplet.levels
             if  Basics.selectLevelPair(iLevel, fLevel, settings.lineSelection)
-                ##x pws = ParticleScattering.determinePartialWavesNR(fLevel, iLevel, settings) 
                 for en in settings.impactEnergies
                     enau    = Defaults.convertUnits("energy: to atomic", en)
                     newBeam = Beam.redefineEnergy(enau, settings.beamType)

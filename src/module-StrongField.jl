@@ -281,7 +281,7 @@ end
     ... constructor for the default values of SFA computations.
 """
 function Settings()
-    Settings([E1], [UseCoulomb], true, true, false, false, true)
+    Settings([E1], "Coulomb", true, true, false, false, true)
 end
 
 
@@ -1334,7 +1334,7 @@ function ReducedTime(epsiloni::Float64, volkov::AbstractVolkovState, envelope::P
     else            orderGLt = 1000
     end
 
-    gaussLegendret = Radial.GridGL("Finite",0.,Tp,orderGLt)
+    gaussLegendret = Radial.GridGL(Radial.GridGaussLegendreFinite(),0.,Tp,orderGLt)
     tgrid = gaussLegendret.t;       weightst = gaussLegendret.wt 
 
     #Define Gauss-Legendre grid for r integral

@@ -100,18 +100,18 @@ function Settings(set::ImpactExcitation.Settings;
     printBefore::Union{Nothing, Bool} = nothing,
     operator::Union{Nothing, AbstractEeInteraction} = nothing )
 
-    if lineSelection == nothing     lineSelectionx = set.lineSelection       else lineSelectionx = lineSelection        end
-    if electronEnergies == nothing  electronEnergiesx = set.electronEnergies else electronEnergiesx = electronEnergies  end
-    if energyShift == nothing       energyShiftx = set.energyShift           else energyShiftx = energyShift            end
-    if maxKappa == nothing          maxKappax = set.maxKappa                 else maxKappax = maxKappa                  end
-    if calcRateCoefficient == nothing   calcRateCoefficientx = set.calcRateCoefficient else 
+    if isnothing(lineSelection)     lineSelectionx = set.lineSelection       else lineSelectionx = lineSelection        end
+    if isnothing(electronEnergies)  electronEnergiesx = set.electronEnergies else electronEnergiesx = electronEnergies  end
+    if isnothing(energyShift)       energyShiftx = set.energyShift           else energyShiftx = energyShift            end
+    if isnothing(maxKappa)          maxKappax = set.maxKappa                 else maxKappax = maxKappa                  end
+    if isnothing(calcRateCoefficient)   calcRateCoefficientx = set.calcRateCoefficient else 
                                                                                 calcRateCoefficientx = calcRateCoefficient end
-    if maxEnergyMultiplier == nothing maxEnergyMultiplierx = set.maxEnergyMultiplier else maxEnergyMultiplierx = maxEnergyMultiplier end
-    if numElectronEnergies == nothing numElectronEnergiesx = set.numElectronEnergies else 
+    if isnothing(maxEnergyMultiplier) maxEnergyMultiplierx = set.maxEnergyMultiplier else maxEnergyMultiplierx = maxEnergyMultiplier end
+    if isnothing(numElectronEnergies) numElectronEnergiesx = set.numElectronEnergies else 
                                                                              numElectronEnergiesx = numElectronEnergies end
-    if temperatures == nothing      temperaturesx = set.temperatures         else temperaturesx = temperatures          end
-    if printBefore == nothing       printBeforex = set.printBefore           else printBeforex = printBefore            end
-    if operator == nothing          operatorx = set.operator                 else operatorx = operator                  end
+    if isnothing(temperatures)      temperaturesx = set.temperatures         else temperaturesx = temperatures          end
+    if isnothing(printBefore)       printBeforex = set.printBefore           else printBeforex = printBefore            end
+    if isnothing(operator)          operatorx = set.operator                 else operatorx = operator                  end
 
     Settings( lineSelectionx, electronEnergiesx, energyShiftx, maxKappax, calcRateCoefficientx, maxEnergyMultiplierx, 
                                                             numElectronEnergiesx, temperaturesx, printBeforex, operatorx )
@@ -239,8 +239,6 @@ function amplitude(kind::AbstractEeInteraction, channel::ImpactExcitation.Channe
                                 "and for partial waves $(string(fPartial)[2:end]),  $(string(iPartial)[2:end])... ", color=:light_green) end
     matrix = zeros(Float64, nf, ni)
     #
-    ##x @show cInitialLevel.basis.subshells
-    ##x @show cFinalLevel.basis.subshells
     if  cInitialLevel.basis.subshells == cFinalLevel.basis.subshells
         iLevel = cInitialLevel;   fLevel = cFinalLevel
     else
@@ -308,7 +306,7 @@ function  computeAmplitudesProperties(line::ImpactExcitation.Line, nm::Nuclear.M
     conv = 0.; conv0 = 0. ; n = 0
     
     # Define a common subshell list for both multiplets
-    subshellList = Basics.generate("subshells: ordered list for two bases", line.finalLevel.basis, line.initialLevel.basis)
+    subshellList = Basics.generate(OrderedSubshellList(), line.finalLevel.basis, line.initialLevel.basis)
     Defaults.setDefaults("relativistic subshell list", subshellList; printout=false)
     
     # First determine a common set of continuum orbitals for the incoming and outgoing electron
@@ -654,7 +652,7 @@ function computeEffStrengths(lines::Array{ImpactExcitation.Line, 1}, settings::I
         energies = [ line.finalElectronEnergy for line in lines]
         collisionStrengths = [ line.collisionStrength for line in lines]
         
-        enGrid = Radial.GridGL("Finite", minimum(energies), maximum(energies) , 25, printout=false)
+        enGrid = Radial.GridGL(Radial.GridGaussLegendreFinite(), minimum(energies), maximum(energies) , 25, printout=false)
         cs     = [ ImpactExcitation.interpolateCS(en, energies, collisionStrengths) for en in enGrid.t ]
 
         # For low temperature Gauss-Laguerre integration

@@ -7,7 +7,7 @@
 module InteractionStrength
 
 
-using  GSL, ..AngularMomentum, ..Basics, ..BsplinesN, ..Defaults, ..ManyElectron, ..Nuclear, ..Radial, ..RadialIntegrals
+using  GSL, ..AngularMomentum, ..Basics, ..Bsplines, ..Defaults, ..ManyElectron, ..Nuclear, ..Radial, ..RadialIntegrals
 
 
 """
@@ -64,7 +64,6 @@ end
 """
 function eMultipole(k::Int64, a::Orbital, b::Orbital, grid::Radial.Grid)
     wa = AngularMomentum.CL_reduced_me_rb(a.subshell, k, b.subshell) * RadialIntegrals.rkDiagonal(k, a, b, grid)
-    ##x @show RadialIntegrals.rkDiagonal(k, a, b, grid), AngularMomentum.CL_reduced_me_rb(a.subshell, k, b.subshell)
     return( wa )
 end
 
@@ -107,7 +106,6 @@ function hfs_t1(a::Orbital, b::Orbital, grid::Radial.Grid)
     wc =   RadialIntegrals.rkNonDiagonal(-2, a, b, grid)
     wa =   wb * wc
     #
-    ##x println("**  <$(a.subshell) || t1 || $(b.subshell)>  = $wa   = $wb * $wc" )
     return( wa )
 end
 
@@ -142,7 +140,6 @@ function hfs_tM1(a::Orbital, b::Orbital, grid::Radial.Grid)
     wc =   RadialIntegrals.rkNonDiagonal(-2, a, b, grid)
     wa =   wb * wc
     #
-    ##x println("**  <$(a.subshell) || t1 || $(b.subshell)>  = $wa   = $wb * $wc" )
     return( wa )
 end
 
@@ -158,7 +155,6 @@ function hfs_tM2(a::Orbital, b::Orbital, grid::Radial.Grid)
     wc =   RadialIntegrals.rkNonDiagonal(-3, a, b, grid)/2
     wa =   wb * wc
     #
-    ##x println("**  <$(a.subshell) || t1 || $(b.subshell)>  = $wa   = $wb * $wc" )
     return( wa )
 end
 
@@ -174,7 +170,6 @@ function hfs_tM3(a::Orbital, b::Orbital, grid::Radial.Grid)
     wc =   RadialIntegrals.rkNonDiagonal(-4, a, b, grid)/3
     wa =   wb * wc
     #
-    ##x println("**  <$(a.subshell) || t1 || $(b.subshell)>  = $wa   = $wb * $wc" )
     return( wa )
 end
 
@@ -793,76 +788,6 @@ end
 
 
 """
-`InteractionStrength.matrixL_Coulomb(L::Int64, a::Orbital, b::Orbital, c::Orbital, d::Orbital, primitives::BsplinesN.Primitives)`  
-    ... computes the partly-contracted (effective) Coulomb interaction matrices M^L_Coulomb (abcd) for given rank L and orbital functions 
-        a, b, c and d at the given grid. The matrix M^L is defined for the primitives and contracted over the two orbitals
-        b, d (for a=c) or  b, c (for a=d).  An error message is issued if a != c && a != d. A matrix::Array{Float64,2} is returned.
-"""
-function matrixL_Coulomb(L::Int64, a::Orbital, b::Orbital, c::Orbital, d::Orbital, primitives::BsplinesN.Primitives)
-    grid = primitives.grid;   nsL = primitives.grid.nsL;    nsS = primitives.grid.nsS
-    wm = zeros( nsL+nsS, nsL+nsS )
-    # Test for the triangular-delta conditions and calculate the reduced matrix elements of the C^L tensors
-    la = Basics.subshell_l(a.subshell);    ja2 = Basics.subshell_2j(a.subshell)
-    lb = Basics.subshell_l(b.subshell);    jb2 = Basics.subshell_2j(b.subshell)
-    lc = Basics.subshell_l(c.subshell);    jc2 = Basics.subshell_2j(c.subshell)
-    ld = Basics.subshell_l(d.subshell);    jd2 = Basics.subshell_2j(d.subshell)
-
-    if  AngularMomentum.triangularDelta(ja2+1,jc2+1,L+L+1) * AngularMomentum.triangularDelta(jb2+1,jd2+1,L+L+1) == 0   ||   
-        rem(la+lc+L,2) == 1   ||   rem(lb+ld+L,2) == 1
-        return( wm )
-    end
-    xc = AngularMomentum.CL_reduced_me(a.subshell, L, c.subshell) * AngularMomentum.CL_reduced_me(b.subshell, L, d.subshell)
-    if   rem(L,2) == 1    xc = - xc    end 
-
-    if  a.subshell == c.subshell
-        # Direct interaction; contract the full interaction array over the orbitals b and d
-        for  i = 1:nsL
-            for  k = 1:nsL 
-                Ba = primitives.bsplinesL[i].bs;    Bc = primitives.bsplinesL[k].bs
-                wm[i,k] = RadialIntegrals.SlaterRkComponent_2dim(L, Ba, b.P, Bc, d.P, grid) + 
-                            RadialIntegrals.SlaterRkComponent_2dim(L, Ba, b.Q, Bc, d.Q, grid)
-            end
-        end
-        for  i = 1:nsS
-            for  k = 1:nsS
-                Ba = primitives.bsplinesS[i].bs;    Bc = primitives.bsplinesS[k].bs
-                wm[nsL+i,nsL+k] = RadialIntegrals.SlaterRkComponent_2dim(L, Ba, b.P, Bc, d.P, grid) + 
-                                    RadialIntegrals.SlaterRkComponent_2dim(L, Ba, b.Q, Bc, d.Q, grid)
-            end
-        end
-    elseif true 
-        println("Skip exchange integrals")
-        return( wm )
-    elseif  a.subshell == d.subshell
-        # Exchange interaction; contract the full interaction array over the orbitals b and c
-        for  i = 1:nsL
-            for  k = 1:nsL 
-                Ba = primitives.bsplinesL[i].bs;    Bd = primitives.bsplinesL[k].bs
-                wm[i,k] = RadialIntegrals.SlaterRkComponent_2dim(L, Ba, b.P, c.P, Bd, grid)
-            end
-            for  k = 1:nsS 
-                Ba = primitives.bsplinesL[i].bs;    Bd = primitives.bsplinesS[k].bs
-                wm[i,nsL+k] = RadialIntegrals.SlaterRkComponent_2dim(L, Ba, b.P, c.Q, Bd, grid)
-            end
-        end
-        for  i = 1:nsS
-            for  k = 1:nsL 
-                Ba = primitives.bsplinesS[i].bs;    Bd = primitives.bsplinesL[k].bs
-                wm[nsL+i,k] = RadialIntegrals.SlaterRkComponent_2dim(L, Ba, b.Q, c.P, Bd, grid)
-            end
-            for  k = 1:nsS 
-                Ba = primitives.bsplinesS[i].bs;    Bd = primitives.bsplinesS[k].bs
-                wm[nsL+i,nsL+k] = RadialIntegrals.SlaterRkComponent_2dim(L, Ba, b.Q, c.Q, Bd, grid)
-            end
-        end
-    else    error("stop d")
-    end
-
-    return( wm )
-end
-
-
-"""
 `InteractionStrength.XL_Coulomb_WO(L::Int64, a::Orbital, b::Orbital, c::Orbital, d::Orbital, grid::Radial.Grid)`  
     ... computes the the effective Coulomb interaction strengths X^L_Coulomb (abcd) for given rank L and orbital functions 
         a, b, c and d at the given grid but without optimization. A value::Float64 is returned.
@@ -882,7 +807,6 @@ function XL_Coulomb_WO(L::Int64, a::Orbital, b::Orbital, c::Orbital, d::Orbital,
     if   rem(L,2) == 1    xc = - xc    end 
     
     XL_Coulomb = xc * RadialIntegrals.SlaterRk_2dim_WO(L, a, b, c, d, grid)
-    ##x XL_Coulomb = xc * RadialIntegrals.SlaterRk_new(L, a, b, c, d, grid)
     return( XL_Coulomb )
 end
 
@@ -937,7 +861,6 @@ function XL_Coulomb(L::Int64, a::Orbital, b::Orbital, c::Orbital, d::Orbital, gr
         if   rem(L,2) == 1    xc = - xc    end 
         XL_Coulomb = xc * RadialIntegrals.SlaterRk_2dim(L, a, b, c, d, grid)
         
-        ##x XL_Coulomb = XL_Coulomb* (-1)^( (ja2+jb2+jc2+jd2)/2 )
     end
     
     return( XL_Coulomb )
@@ -945,11 +868,11 @@ end
 
 
 """
-`InteractionStrength.XL_Coulomb(L::Int64, a::Subshell, b::Orbital, c::Subshell, d::Orbital, primitives::BsplinesN.Primitives)`  
+`InteractionStrength.XL_Coulomb(L::Int64, a::Subshell, b::Orbital, c::Subshell, d::Orbital, primitives::Bsplines.Primitives)`  
     ... computes the (direct) Coulomb interaction strengths X^L_Coulomb (.b.d) for given rank L and orbital functions
         as well as the given primitives. A (nsL+nsS) x (nsL+nsS) matrixV::Array{Float64,2} is returned.
 """
-function XL_Coulomb(L::Int64, a::Subshell, b::Orbital, c::Subshell, d::Orbital, primitives::BsplinesN.Primitives)
+function XL_Coulomb(L::Int64, a::Subshell, b::Orbital, c::Subshell, d::Orbital, primitives::Bsplines.Primitives)
     nsL = primitives.grid.nsL;        nsS = primitives.grid.nsS;    grid = primitives.grid
     wm  = zeros(nsL+nsS, nsL+nsS)
     
@@ -1000,11 +923,11 @@ end
 
 
 """
-`InteractionStrength.XL_Coulomb(L::Int64, a::Subshell, b::Orbital, c::Orbital, d::Subshell, primitives::BsplinesN.Primitives)`
+`InteractionStrength.XL_Coulomb(L::Int64, a::Subshell, b::Orbital, c::Orbital, d::Subshell, primitives::Bsplines.Primitives)`
     ... computes the (exchange) Coulomb interaction strengths X^L_Coulomb (.bc.) for given rank L and orbital functions
         as well as the given primitives. A (nsL+nsS) x (nsL+nsS) matrixV::Array{Float64,2} is returned.
 """
-function XL_Coulomb(L::Int64, a::Subshell, b::Orbital, c::Orbital, d::Subshell, primitives::BsplinesN.Primitives)
+function XL_Coulomb(L::Int64, a::Subshell, b::Orbital, c::Orbital, d::Subshell, primitives::Bsplines.Primitives)
     nsL = primitives.grid.nsL;        nsS = primitives.grid.nsS;    grid = primitives.grid
     wm  = zeros(nsL+nsS, nsL+nsS)
     
@@ -1089,7 +1012,6 @@ function XL_CoulombDamped(tau::Float64, L::Int64, a::Orbital, b::Orbital, c::Orb
     if   rem(L,2) == 1    xc = - xc    end 
     
     XL_Coulomb = xc * RadialIntegrals.SlaterRk_2dim_Damped(tau::Float64, L, a, b, c, d, grid)
-    ##x XL_Coulomb = xc * RadialIntegrals.SlaterRk_new(L, a, b, c, d, grid)
     return( XL_Coulomb )
 end
 
@@ -1150,10 +1072,6 @@ end
         a, b, c and d at the given grid. A value::Float64 is returned.
 """
 function X_smsB(a::Orbital, b::Orbital, c::Orbital, d::Orbital, nm::Nuclear.Model, grid::Radial.Grid)
-    ##x println("")
-    ##x @show AngularMomentum.CL_reduced_me_sms(b.subshell, 1, d.subshell) 
-    ##x @show RadialIntegrals.Vinti(b, d, grid)
-    ##x @show RadialIntegrals.isotope_smsB(a, c, nm.Z, grid)
     wa = - AngularMomentum.CL_reduced_me_sms(b.subshell, 1, d.subshell) * RadialIntegrals.Vinti(b, d, grid) *
             RadialIntegrals.isotope_smsB(a, c, nm.Z, grid) / 2
     return( wa )

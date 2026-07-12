@@ -32,26 +32,26 @@ end
 
 
 """
-`Einstein.Settings(settings::Einstein.Settings;`
-    
-            multipoles=..,            printBefore=..,      lineSelection=..,     
-            photonEnergyShift=..,     mimimumPhotonEnergy=..,         maximumPhotonEnergy=..)
-            
-    ... constructor for re-defining the settings::Einstein.Settings.
-"""
-function Settings(settings::Einstein.Settings;                            multipoles::Union{Nothing,Array{EmMultipole,1}}=nothing,    
-    printBefore::Union{Nothing,Bool}=nothing,                             lineSelection::Union{Nothing,LineSelection}=nothing, 
-    photonEnergyShift::Union{Nothing,Float64}=nothing,  
-    mimimumPhotonEnergy::Union{Nothing,Float64}=nothing,                  maximumPhotonEnergy::Union{Nothing,Float64}=nothing)
+`Einstein.Settings(set::Einstein.Settings;`
 
-    if  multipoles         == nothing   multipolesx          = settings.multipoles            else  multipolesx = multipoles                   end 
-    if  printBefore        == nothing   printBeforex         = settings.printBefore           else  printBeforex = printBefore                 end 
-    if  lineSelection      == nothing   lineSelectionx       = set.lineSelection              else  lineSelectionx = lineSelection             end 
-    if  photonEnergyShift  == nothing   photonEnergyShiftx   = settings.photonEnergyShift     else  photonEnergyShiftx = photonEnergyShift     end 
-    if  mimimumPhotonEnergy== nothing   mimimumPhotonEnergyx = settings.mimimumPhotonEnergy   else  mimimumPhotonEnergyx = mimimumPhotonEnergy end 
-    if  maximumPhotonEnergy== nothing   maximumPhotonEnergyx = settings.maximumPhotonEnergy   else  maximumPhotonEnergyx = maximumPhotonEnergy end 
-    
-    Settings(multipolesx, printBeforex, selectLinesx, selectedLinesx, photonEnergyShiftx, mimimumPhotonEnergyx, maximumPhotonEnergyx)
+        multipoles=..,        printBefore=..,      lineSelection=..,
+        photonEnergyShift=.., mimimumPhotonEnergy=..,  maximumPhotonEnergy=..)
+
+    ... keyword copy-constructor for re-defining selected values of a settings::Einstein.Settings.
+"""
+function Settings(set::Einstein.Settings;
+        multipoles::Union{Nothing,Array{EmMultipole,1}}=nothing,
+        printBefore::Union{Nothing,Bool}=nothing,            lineSelection::Union{Nothing,LineSelection}=nothing,
+        photonEnergyShift::Union{Nothing,Float64}=nothing,
+        mimimumPhotonEnergy::Union{Nothing,Float64}=nothing, maximumPhotonEnergy::Union{Nothing,Float64}=nothing)
+    if  isnothing(multipoles)            multipolesx          = set.multipoles          else   multipolesx          = multipoles          end
+    if  isnothing(printBefore)           printBeforex         = set.printBefore         else   printBeforex         = printBefore         end
+    if  isnothing(lineSelection)         lineSelectionx       = set.lineSelection       else   lineSelectionx       = lineSelection       end
+    if  isnothing(photonEnergyShift)     photonEnergyShiftx   = set.photonEnergyShift   else   photonEnergyShiftx   = photonEnergyShift   end
+    if  isnothing(mimimumPhotonEnergy)   mimimumPhotonEnergyx = set.mimimumPhotonEnergy else   mimimumPhotonEnergyx = mimimumPhotonEnergy end
+    if  isnothing(maximumPhotonEnergy)   maximumPhotonEnergyx = set.maximumPhotonEnergy else   maximumPhotonEnergyx = maximumPhotonEnergy end
+
+    Settings( multipolesx, printBeforex, lineSelectionx, photonEnergyShiftx, mimimumPhotonEnergyx, maximumPhotonEnergyx )
 end
 
 
@@ -190,7 +190,7 @@ function  computeAmplitudesProperties(line::Einstein.Line, grid::Radial.Grid, se
     newChannels = Einstein.Channel[];    rateC = rateB = 0.
     for channel in line.channels
         #
-        amplitude = PhotoEmission.amplitude("emission", channel.multipole, channel.gauge, line.omega, line.finalLevel, line.initialLevel, grid)
+        amplitude = PhotoEmission.amplitude(Emission(), channel.multipole, channel.gauge, line.omega, line.finalLevel, line.initialLevel, grid)
         #
         push!( newChannels, Einstein.Channel( channel.multipole, channel.gauge, amplitude) )
         if       channel.gauge == Basics.Coulomb     rateC = rateC + abs(amplitude)^2
@@ -423,10 +423,10 @@ function  displayRates(stream::IO, lines::Array{Einstein.Line,1})
             sa = sa * TableStrings.flushleft(11, string(ch.gauge);  na=2)
             chRate =  8pi * Defaults.getDefaults("alpha") * line.omega / (Basics.twice(line.initialLevel.J) + 1) * (abs(ch.amplitude)^2) * 
                                                                 (Basics.twice(line.finalLevel.J) + 1)
-            sa = sa * @sprintf("%.6e", Basics.recast("rate: radiative, to Einstein A",  line, chRate)) * "  "
-            sa = sa * @sprintf("%.6e", Basics.recast("rate: radiative, to Einstein B",  line, chRate)) * "    "
-            sa = sa * @sprintf("%.6e", Basics.recast("rate: radiative, to f",           line, chRate)) * "    "
-            sa = sa * @sprintf("%.6e", Basics.recast("rate: radiative, to decay width", line, chRate)) * "    "
+            sa = sa * @sprintf("%.6e", Basics.recast(RecastRateToEinsteinA(),  line, chRate)) * "  "
+            sa = sa * @sprintf("%.6e", Basics.recast(RecastRateToEinsteinB(),  line, chRate)) * "    "
+            sa = sa * @sprintf("%.6e", Basics.recast(RecastRateToOscillatorF(),           line, chRate)) * "    "
+            sa = sa * @sprintf("%.6e", Basics.recast(RecastRateToDecayWidth(), line, chRate)) * "    "
             println(stream, sa)
         end
     end

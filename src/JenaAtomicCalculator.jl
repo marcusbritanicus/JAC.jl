@@ -29,6 +29,7 @@ incBasicProcesses       = true
 incAdvancedProcesses    = true
 incCascades             = true  ## Requires: incBasicProcesses
 incPlasma               = true  ## Requires: incProperties
+incLiouville            = true  ## Requires: incProperties
 incStrongField          = true
 incAtomicCompass        = true
 incRacahAlgebra         = true
@@ -38,6 +39,7 @@ incDeepLearning         = true
 incAdvancedProcesses    = false
 incCascades             = false  ## Requires: incBasicProcesses
 incPlasma               = false  ## Requires: incProperties
+incLiouville            = false  ## Requires: incProperties
 incStrongField          = false
 incAtomicCompass        = false
 incRacahAlgebra         = false  ==#
@@ -54,12 +56,12 @@ export AbstractCImethod, AbstractConfigurationRestriction, AbstractEeInteraction
        AngularJ64, AngularM64, AngularJ, AngularMomentum, AddElectrons, 
        AsfSettings, Atomic, AtomicState, AtomicStructure, Auger, AugerInPlasma, AutoIonization, AverageAtom, AtomicCompass,
        AtomicModel, AtomicFeatures,
-       Basics, Basis, Beam, BeamPhotoExcitation, BreitInteraction, Bsplines, BsplinesN, ByMultipoles, ByNumber, ByParity, 
+       Basics, Basis, Beam, BeamPhotoExcitation, BreitInteraction, Bsplines, ByMultipoles, ByNumber, ByParity,
        CartesianVector, Cartesian2DFieldVector, Cartesian3DFieldVector, CiSettings, CiExpansion, ClebschGordan, CloseCoupling, 
        compute, convertUnits, Compton, Configuration, ConfigurationR, 
        Cascade, Continuum, CorePolarization, Coulex, CoulombExcitation, Coulion, CoulombBreit, CoulombGaunt, 
        CoulombInteraction, CoulombIonization, CsfR, ClosedCore, ClosedShells, ClosedSubshells, ContractShells, checkConfigurations,
-       computeCrossSections,  computeForPedestrians,  computeLevelEnergies,  computeLifetimes,  computeResonanceStrength, computeTransitionRates, 
+       computeBranchingFractions,  computeChargeStateDistribution,  computeCrossSections,  computeForPedestrians,  computeLevelEnergies,  computeLifetimes,  computeResonanceStrength, computeTransitionRates,  displaySpectrum,
        diagonalize, Defaults, DecayYield, DielectronicRecombination, Dierec, Djpq, DoubleAutoIonization, DoubleAuger, DeepLearning,
        DiagonalCoulomb, DefaultQuantizationAxis, displayCouplings, displayConfiguration,  displayConfigurations, Distribution,
        Eimex, ElectronCapture, ElecCapture, estimate, ElectricDipoleMoment, Einstein, EinsteinX, EmMultipole, evaluate, ExpStokes, 
@@ -119,12 +121,10 @@ include("module-Nuclear.jl");           using ..Nuclear
 include("module-AngularMomentum.jl")
 ## include("module-AngularCoefficients-Ratip2013.jl")  ## keep for internal test purposes only
 include("module-SpinAngular.jl");       using ..SpinAngular
-##x include("module-Bsplines.jl");          using ..Bsplines
-include("module-BsplinesN.jl");         using ..BsplinesN
-include("module-Pulse.jl")
+include("module-Bsplines.jl");          using ..Bsplines
+include("module-Pulse.jl");             using ..Pulse
 include("module-Beam.jl")
 include("module-Continuum.jl")
-##x include("module-Details.jl")
 include("module-RadialIntegrals.jl");   using ..RadialIntegrals
 include("module-HydrogenicIon.jl")
 include("module-InteractionStrength.jl")
@@ -221,11 +221,15 @@ include("module-Empirical.jl");         using ..Empirical
 
 # Functions/methods for atomic computations
 include("module-Atomic.jl");            using ..Atomic
-include("module-ForPedestrians.jl");    using ..ForPedestrians
 
 if  incPlasma
 # Functions/methods for plasma computations
 include("module-Plasma.jl");            using ..Plasma
+end
+
+if  incLiouville
+# Functions/methods for plasma computations
+include("module-Liouville.jl");         using ..Liouville
 end
 
 
@@ -233,6 +237,9 @@ if  incCascades
 # Functions/methods for cascade computations
 include("module-Cascade.jl");           using ..Cascade
 end
+
+# ForPedestrians depends on Cascade and must be included after it
+include("module-ForPedestrians.jl");    using ..ForPedestrians
 
 # Functions/methods for symbolic computations
 if  incRacahAlgebra
@@ -261,7 +268,7 @@ function __init__()
 end
 
 println("\nWelcome to JenaAtomicCalculator (JAC):  A community approach to the computation of atomic structures, " *
-        "cascades and time evolutions [(C) Copyright by Stephan Fritzsche, Jena (2018-2025)].")
+        "cascades and time evolutions [(C) Copyright by Stephan Fritzsche, Jena (2018-2026)].")
         
 
 end

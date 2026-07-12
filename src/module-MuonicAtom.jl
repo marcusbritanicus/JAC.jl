@@ -74,8 +74,8 @@ end
 """
 function MuonSubshell(sa::String) 
     wa = strip( sa );   
-    wb = findnext("_", wa, 1);    if  wb == nothing   error("No underscore in sa = $sa")           else   wb = wb[1]   end
-    wc = findnext("/", wa, wb);   if  wc == nothing   error("No / in wa[] = $(wa[wb[1]+1:end])")   else   wc = wc[1]   end
+    wb = findnext("_", wa, 1);    if  isnothing(wb)   error("No underscore in sa = $sa")           else   wb = wb[1]   end
+    wc = findnext("/", wa, wb);   if  isnothing(wc)   error("No / in wa[] = $(wa[wb[1]+1:end])")   else   wc = wc[1]   end
     wd = string( wa[wb+1:wc-1] )
     n  = parse(Int64, wa[1:wb-2]);                  l  = shellNotation( string(wa[ wb-1 ]) )
     j2 = parse(Int64, wd );                         !(string(wa[end]) == "2")    &&  error("Unrecognized subshell string sa = $sa") 
@@ -357,14 +357,14 @@ end
 
 """
 `MuonicAtom.generateDiracOrbitals(subshells::Array{MuonSubshell,1}, nm::Nuclear.Model, 
-                                  primitives::BsplinesN.Primitives; printout::Bool=true)`
+                                  primitives::Bsplines.Primitives; printout::Bool=true)`
     ... generates all muonic (Dirac) orbitals from subshells for the nuclear potential as specified by nm. A set of 
         orbitals::Dict{Subshell, Orbital} is returned, for which the proper muon mass is taken into account for the 
         given nuclear model. Note that a properly chosen grid is essential to model the muonic solutions, which 
         can later be interpolated upon a suitable (electronic) grid.
 """
 function generateDiracOrbitals(subshells::Array{MuonSubshell,1}, nm::Nuclear.Model, 
-                               primitives::BsplinesN.Primitives; printout::Bool=true)
+                               primitives::Bsplines.Primitives; printout::Bool=true)
                 
     return( nothing )
 end

@@ -27,6 +27,20 @@ struct   MeshGL     <:  Radial.AbstractMesh     end
 
 
 """
+`abstract type Radial.AbstractGridGaussLegendreScheme`
+    ... labels the kind of Gauss-Legendre grid to be constructed; it is used for dispatch and to avoid
+        string comparisons.
+    Concrete subtypes:
+    + GridGaussLegendreQED    ... generate a GL grid for QED computations over the interval [1, infinity).
+    + GridGaussLegendreFinite ... generate a GL grid over a finite interval [tmin, tmax].
+"""
+abstract type  AbstractGridGaussLegendreScheme                                              end
+struct         GridGaussLegendreQED     <:  AbstractGridGaussLegendreScheme                 end
+struct         GridGaussLegendreFinite  <:  AbstractGridGaussLegendreScheme                 end
+
+
+
+"""
 `struct  Radial.Grid`  ... defines a type for the radial grid which contains all information about the grid parameters, the genration 
                             of the B-spline basis as well as for performing radial integrations.
 
@@ -123,16 +137,16 @@ function Grid(gr::Radial.Grid;
     orderS::Union{Nothing,Int64}=nothing,       orderGL::Union{Nothing,Int64}=nothing,  meshType::Union{Nothing,Radial.AbstractMesh}=nothing, 
     printout::Bool=false)
     
-    if  rnt      == nothing   rntx      = gr.rnt        else    rntx      = rnt       end 
-    if  h        == nothing   hx        = gr.h          else    hx        = h         end 
-    if  hp       == nothing   hpx       = gr.hp         else    hpx       = hp        end 
-    if  rbox     == nothing   rboxx     = nothing       else    rboxx     = rbox      end 
-    if  orderL   == nothing   orderLx   = gr.orderL     else    orderLx   = orderL    end 
-    if  orderS   == nothing   orderSx   = gr.orderS     else    orderSx   = orderS    end 
-    if  orderGL  == nothing   orderGLx  = gr.orderGL    else    orderGLx  = orderGL   end 
-    if  meshType == nothing   meshTypex = gr.meshType   else    meshTypex = meshType  end 
+    if  isnothing(rnt)        rntx      = gr.rnt        else    rntx      = rnt       end 
+    if  isnothing(h)          hx        = gr.h          else    hx        = h         end 
+    if  isnothing(hp)         hpx       = gr.hp         else    hpx       = hp        end 
+    if  isnothing(rbox)       rboxx     = nothing       else    rboxx     = rbox      end 
+    if  isnothing(orderL)     orderLx   = gr.orderL     else    orderLx   = orderL    end 
+    if  isnothing(orderS)     orderSx   = gr.orderS     else    orderSx   = orderS    end 
+    if  isnothing(orderGL)    orderGLx  = gr.orderGL    else    orderGLx  = orderGL   end 
+    if  isnothing(meshType)   meshTypex = gr.meshType   else    meshTypex = meshType  end 
     
-    if      rboxx == nothing    NoPointsx = gr.NoPoints - rem(gr.NoPoints, orderGLx)
+    if      isnothing(rboxx)    NoPointsx = gr.NoPoints - rem(gr.NoPoints, orderGLx)
     elseif  rboxx  > 0.         NoPointsx = Radial.determineNoPoints(rntx, hx, hpx, rboxx, orderGLx)
     else    error("stop a")
     end
@@ -291,16 +305,15 @@ end
     ... specified a default version of a Gauss-Legendre grid with 6 points in the interval [0.,1.].
 """
 function GridGL()
-    GridGL("Finite", 0., 1., 6; printout=false)
+    GridGL(GridGaussLegendreFinite(), 0., 1., 6; printout=false)
 end
 
 
 """
-`Radial.GridGL("QED", orderGL::Int64; printout::Bool=false)`  
-    ... constructor to define Gauss-Legendre grid for the typical QED computation in the interval [1.0, infinity].
+`Radial.GridGL(::GridGaussLegendreQED, orderGL::Int64; printout::Bool=false)`
+    ... constructor to define Gauss-Legendre grid for the typical QED computation in the interval [1.0, infinity).
 """
-function GridGL(sa::String, orderGL::Int64; printout::Bool=false)
-    !(sa == "QED")  && error("Unrecognized keystring; sa = $sa")
+function GridGL(::GridGaussLegendreQED, orderGL::Int64; printout::Bool=false)
     txlow = 1.;    t = Float64[];    wt = Float64[];    nt = 0
     for i = 1:100000
         # Define the exponential increase (1.5) and the maximum size (infinity=150.)
@@ -320,11 +333,10 @@ end
 
 
 """
-`Radial.GridGL("Finite", tmin::Float64, tmax::Float64, orderGL::Int64; printout::Bool=false)`  
-    ... constructor to define Gauss-Legendre grid in the interval [tmin, tmax].
+`Radial.GridGL(::GridGaussLegendreFinite, tmin::Float64, tmax::Float64, orderGL::Int64; printout::Bool=false)`
+    ... constructor to define Gauss-Legendre grid in the finite interval [tmin, tmax].
 """
-function GridGL(sa::String, tmin::Float64, tmax::Float64, orderGL::Int64; printout::Bool=false)
-    !(sa == "Finite")  && error("Unrecognized keystring; sa = $sa")
+function GridGL(::GridGaussLegendreFinite, tmin::Float64, tmax::Float64, orderGL::Int64; printout::Bool=false)
     t = Float64[];    wt = Float64[]
     
     wax = QuadGK.gauss(orderGL);    t = wax[1];     wt = wax[2]        

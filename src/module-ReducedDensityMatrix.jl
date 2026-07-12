@@ -37,9 +37,9 @@ end
                                     printBefore::Bool=true, levelSelection::LevelSelection=LevelSelection()) 
     ... keyword constructor to overwrite selected value of reduced-density matrix computations.
 """
-function Settings(; calcNatural::Bool=true, calcDensity::Bool=true, calcIpq::Bool=false, 
-                                    printBefore::Bool=true, levelSelection::LevelSelection=LevelSelection())
-    Settings(calcNatural, calcDensity, calcIpq, printBefore, levelSelection)
+function Settings(; calcNatural::Bool=true, calcDensity::Bool=true, calcIpq::Bool=false,
+                    calc2pRDM::Bool=false, printBefore::Bool=true, levelSelection::LevelSelection=LevelSelection())
+    Settings(calcNatural, calcDensity, calcIpq, calc2pRDM, printBefore, levelSelection)
 end
 
 # `Base.show(io::IO, settings::ReducedDensityMatrix.Settings)`  
@@ -148,7 +148,7 @@ end
 """
 function  computeNaturalOrbitalExpansion(rho1p::Array{Float64,2}, level::Level)
     naturalOcc = Float64[];      naturalExp = Dict{Subshell, Array{Float64,1}}();       lenNO = length(level.basis.subshells)
-    eigen  = Basics.diagonalize("matrix: LinearAlgebra", rho1p)
+    eigen  = Basics.diagonalize(MatrixWithLinearAlgebra(), rho1p)
     orbIndices = Float64[]
     for  vector in eigen.vectors    wx = findmax(vector);   push!(orbIndices, wx[2])    end
     @show "  "
@@ -298,9 +298,6 @@ function  compute2pRDM(level::Level)
                             for  coeff in wa
                                 if  (p == coeff.a   &&  q == coeff.b   &&  r == coeff.c   &&  s == coeff.d)  ||  
                                     (p == coeff.c   &&  q == coeff.d   &&  r == coeff.a   &&  s == coeff.b)
-                                    ##x if  coeff.V != 0.  @show i, j, coeff.V    end
-                                    ##x jj = Basics.subshell_2j(level.basis.orbitals[coeff.a].subshell)
-                                    ##x rdm[ip,iq,ir,is] = rdm[ir,is,ip,iq] = rdm[ip,iq,ir,is] + level.mc[ir] * coeff.T * sqrt( jj + 1) * level.mc[is]
                                     rdm[ip,iq,ir,is] = rdm[ir,is,ip,iq] = rdm[ip,iq,ir,is] + level.mc[i] * coeff.V * level.mc[j]
                                 end
                             end

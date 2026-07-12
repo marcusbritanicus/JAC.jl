@@ -49,7 +49,34 @@ function Settings()
 end
 
 
-# `Base.show(io::IO, settings::PhotoExcitationFluores.Settings)` 
+"""
+`PhotoExcitationFluores.Settings(set::PhotoExcitationFluores.Settings; keywords...)`
+    ... keyword constructor to modify selected fields of a PhotoExcitationFluores.Settings object;
+        for fields not given, the values of set are used.
+"""
+function Settings(set::PhotoExcitationFluores.Settings;
+        multipoles::Union{Nothing,Array{EmMultipole,1}}=nothing,           gauges::Union{Nothing,Array{UseGauge,1}}=nothing,
+        calcPhotonDm::Union{Nothing,Bool}=nothing,                         calcAngular::Union{Nothing,Bool}=nothing,
+        calcStokes::Union{Nothing,Bool}=nothing,                           printBefore::Union{Nothing,Bool}=nothing,
+        incidentStokes::Union{Nothing,ExpStokes}=nothing,                  solidAngles::Union{Nothing,Array{SolidAngle,1}}=nothing,
+        photonEnergyShift::Union{Nothing,Float64}=nothing,                 pathwaySelection::Union{Nothing,PathwaySelection}=nothing)
+    if  isnothing(multipoles)          multipolsx          = set.multipoles         else   multipolsx          = multipoles         end
+    if  isnothing(gauges)              gaugesx             = set.gauges             else   gaugesx             = gauges             end
+    if  isnothing(calcPhotonDm)        calcPhotonDmx       = set.calcPhotonDm       else   calcPhotonDmx       = calcPhotonDm       end
+    if  isnothing(calcAngular)         calcAngularx        = set.calcAngular        else   calcAngularx        = calcAngular        end
+    if  isnothing(calcStokes)          calcStokesx         = set.calcStokes         else   calcStokesx         = calcStokes         end
+    if  isnothing(printBefore)         printBeforex        = set.printBefore        else   printBeforex        = printBefore        end
+    if  isnothing(incidentStokes)      incidentStokesx     = set.incidentStokes     else   incidentStokesx     = incidentStokes     end
+    if  isnothing(solidAngles)         solidAnglesx        = set.solidAngles        else   solidAnglesx        = solidAngles        end
+    if  isnothing(photonEnergyShift)   photonEnergyShiftx  = set.photonEnergyShift  else   photonEnergyShiftx  = photonEnergyShift  end
+    if  isnothing(pathwaySelection)    pathwaySelectionx   = set.pathwaySelection   else   pathwaySelectionx   = pathwaySelection   end
+
+    Settings( multipolsx, gaugesx, calcPhotonDmx, calcAngularx, calcStokesx, printBeforex,
+              incidentStokesx, solidAnglesx, photonEnergyShiftx, pathwaySelectionx )
+end
+
+
+# `Base.show(io::IO, settings::PhotoExcitationFluores.Settings)`
 # 	 ... prepares a proper printout of the variable settings::PhotoExcitationFluores.Settings.  
 function Base.show(io::IO, settings::PhotoExcitationFluores.Settings) 
     println(io, "multipoles:              $(settings.multipoles)  ")
@@ -125,14 +152,14 @@ function  computeAmplitudesProperties(pathway::PhotoExcitationFluores.Pathway, g
     # Compute all excitation channels
     neweChannels = PhotoEmission.Channel[]
     for eChannel in pathway.excitChannels
-        amplitude   = PhotoEmission.amplitude("absorption", eChannel.multipole, eChannel.gauge, pathway.excitEnergy, 
+        amplitude   = PhotoEmission.amplitude(Absorption(), eChannel.multipole, eChannel.gauge, pathway.excitEnergy, 
                                                 pathway.intermediateLevel, pathway.initialLevel, grid)
         push!( neweChannels, PhotoEmission.Channel( eChannel.multipole, eChannel.gauge, amplitude))
     end
     # Compute all fluorescence channels
     newfChannels = PhotoEmission.Channel[]
     for fChannel in pathway.fluorChannels
-        amplitude   = PhotoEmission.amplitude("emission", fChannel.multipole, fChannel.gauge, pathway.fluorEnergy, 
+        amplitude   = PhotoEmission.amplitude(Emission(), fChannel.multipole, fChannel.gauge, pathway.fluorEnergy, 
                                                 pathway.finalLevel, pathway.intermediateLevel, grid)
         push!( newfChannels, PhotoEmission.Channel( fChannel.multipole, fChannel.gauge, amplitude))
     end
@@ -258,7 +285,7 @@ function  determinePathways(finalMultiplet::Multiplet, intermediateMultiplet::Mu
                     eEnergy = nLevel.energy - iLevel.energy + settings.photonEnergyShift
                     fEnergy = nLevel.energy - fLevel.energy + settings.photonEnergyShift
                     if  eEnergy < 0.   ||   fEnergy < 0.    continue    end
-                    rSettings = PhotoEmission.Settings( settings.multipoles, settings.gauges, false, false, LineSelection(), 0., 0., 0.)
+                    rSettings = PhotoEmission.Settings( settings.multipoles, settings.gauges, false, false, CorePolarization(), LineSelection(), 0., 0., 0.)
                     eChannels = PhotoEmission.determineChannels(nLevel, iLevel, rSettings) 
                     fChannels = PhotoEmission.determineChannels(fLevel, nLevel, rSettings) 
                     push!( pathways, PhotoExcitationFluores.Pathway(iLevel, nLevel, fLevel, eEnergy, fEnergy, EmProperty(0., 0.), 

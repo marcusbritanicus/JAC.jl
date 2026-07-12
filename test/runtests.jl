@@ -6,7 +6,11 @@ using JenaAtomicCalculator, ..Defaults, ..TestFrames
     ## Defaults.Constants.define("print test: open", pwd() * "/runtests.report")
 
     @testset "JAC methods" begin
-        @test TestFrames.testMethod_Wigner_3j() 
+        @test TestFrames.testMethod_Wigner_3j()
+    end
+
+    @testset "JAC structs" begin
+        @test TestFrames.testStructConstructors()
     end
 
     @testset "JAC evaluations" begin
@@ -34,7 +38,8 @@ using JenaAtomicCalculator, ..Defaults, ..TestFrames
 
     @testset "JAC properties" begin
         @test TestFrames.testModule_Einstein()
-        ## @test TestFrames.testModule_Hfs()   
+        ## @test TestFrames.testModule_PlasmaShift()  ## disabled: PlasmaShift is now a Plasma.Computation scheme, not an Atomic property; needs Plasma module rework
+        ## @test TestFrames.testModule_Hfs()           ## disabled: runtime error "still to be done" in Hfs.computeAmplitudesProperties (calcNondiagonal path not implemented)
         @test TestFrames.testModule_LandeZeeman() 
         @test TestFrames.testModule_IsotopeShift()   
         @test TestFrames.testModule_AlphaVariation() 
@@ -50,18 +55,36 @@ using JenaAtomicCalculator, ..Defaults, ..TestFrames
         @test TestFrames.testModule_PhotoRecombination()
         @test TestFrames.testModule_AutoIonization()  
         @test TestFrames.testModule_DielectronicRecombination()  
-        ## @test TestFrames.testModule_PhotoExcitationFluores() 
-        ## @test TestFrames.testModule_PhotoExcitationAutoion() 
-        ## @test TestFrames.testModule_RayleighCompton() 
-        ## @test TestFrames.testModule_MultiPhotonDeExcitation() 
-        ## @test TestFrames.testModule_CoulombExcitation() 
+        @test TestFrames.testModule_RayleighCompton()
+        @test TestFrames.testModule_MultiPhotonDeExcitation()
+        @test TestFrames.testModule_CoulombExcitation()
     end
 
     @testset "JAC cascades" begin
         @test TestFrames.testModule_Cascade_StepwiseDecay()
-        ## @test TestFrames.testModule_Cascade_PhotonIonization()
-        ## @test TestFrames.testModule_Cascade_PhotonExcitation()
-        ## @test TestFrames.testModule_Cascade_Simulation()
+        @test TestFrames.testModule_Cascade_PhotonIonization()
+        @test TestFrames.testModule_Cascade_PhotonExcitation()
+        ## @test TestFrames.testModule_Cascade_Simulation()  ## disabled: test-Cascade-StepwiseDecay-data.jld predates CsfR.seniorityNr field; needs data file regeneration
+    end
+
+    @testset "JAC empirical" begin
+        ## no tests defined yet
+    end
+
+    @testset "JAC plasma" begin
+        ## @test TestFrames.testModule_PlasmaShift()  ## disabled: PlasmaShift is now a Plasma.Computation scheme, not an Atomic property; needs Plasma module rework
+    end
+
+    @testset "JAC strongfield" begin
+        ## no tests defined yet
+    end
+
+    @testset "JAC Liouville" begin
+        @test TestFrames.testModule_Liouville()
+    end
+
+    @testset "JAC DeepLearning" begin
+        @test TestFrames.testModule_DeepLearning()
     end
 
 end

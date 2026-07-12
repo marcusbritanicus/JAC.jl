@@ -8,7 +8,7 @@ module Continuum
 
 
 using  GSL, Printf, SpecialFunctions, DelimitedFiles
-using  ..Basics, ..BsplinesN, ..Defaults, ..ManyElectron, ..Radial, ..Nuclear
+using  ..Basics, ..Bsplines, ..Defaults, ..ManyElectron, ..Radial, ..Nuclear
 
 
 """
@@ -187,8 +187,8 @@ end
 function generateOrbitalGalerkin(energy::Float64, sh::Subshell, pot::Radial.Potential, settings::Continuum.Settings)  
     P = zeros(settings.mtp);   Q = zeros(settings.mtp);   Pprime = zeros(settings.mtp);    Qprime = zeros(settings.mtp)
     nsL = pot.grid.nsL - 1;    nsS = pot.grid.nsS - 1
-    wa = BsplinesN.generatePrimitives(pot.grid)
-    wb = BsplinesN.generateGalerkinMatrix(sh, energy, pot, wa)
+    wa = Bsplines.generatePrimitives(pot.grid)
+    wb = Bsplines.generateGalerkinMatrix(sh, energy, pot, wa)
     wc = adjoint(wb) * wb
     
     # Test for 'real-symmetric matrix' ... and symmetrize otherwise
@@ -200,10 +200,10 @@ function generateOrbitalGalerkin(energy::Float64, sh::Subshell, pot::Radial.Pote
             end
         end
     end
-    wd = Basics.diagonalize("matrix: LinearAlgebra", wc) ## , range=1:1)
+    wd = Basics.diagonalize(MatrixWithLinearAlgebra(), wc) ## , range=1:1)
     ## println(">>> Galerkin-eigenvalues = $(wd.values[1]), $(wd.values[2]) for  $sh  with  energy = $energy")
     
-    cOrbital = BsplinesN.generateOrbitalFromPrimitives(sh, energy, settings.mtp, wd.vectors[1], wa)  
+    cOrbital = Bsplines.generateOrbitalFromPrimitives(sh, energy, settings.mtp, wd.vectors[1], wa)  
     mtp      = size(cOrbital.P,1)
     println(">> Continuum B-spline-Galerkin orbital for energy=" * @sprintf("%.4e",energy) * ",  kappa=$(sh.kappa) " *
             "[mpt=$mtp, r[mtp]=" * @sprintf("%.4e",pot.grid.r[mtp]) * ", smallest eigenvalue=" * @sprintf("%.4e",wd.values[1]) * "].")
@@ -414,7 +414,7 @@ function normalizeOrbitalOngRussek(cOrbital::Orbital, pot::Radial.Potential, set
     A = (( (E-V)^2 -wc^4 - wc^2 *kappa*(kappa+1)/r0^2)^(1/2)) / (E-V+wc^2) * (Pe^2 + U^2)
     A = sqrt(A);              phir0 = atan(U, Pe)
     phi = phir0 - q*r0;       N  = 1 / (A * sqrt(pi*wc))
-    phi = rem(phi+1000pi, pi)    ##x to bring phi in the interval 0. <= phi < pi
+    phi = rem(phi+1000pi, pi)    ## to bring phi in the interval 0. <= phi < pi
     
     println(">> WKB (Ong-Russek) normalized continuum orbital with normalization constant N=" * @sprintf("%.4e",N) *
             " and phase phi=" * @sprintf("%.4e",phi) *

@@ -345,12 +345,12 @@ end  ==#
 
 
 """
-`HyperfineInduced.amplitude(kind::String, mp::EmMultipole, gauge::EmGauge, omega::Float64, 
-                            finalLevel::IJF_Level, initialLevel::IJF_Level, grid::Radial.Grid; printout=true)`  
-    ... to compute the radiative (mulipole) transition amplitude between two hyperfine levels; 
+`HyperfineInduced.amplitude(::Emission, mp::EmMultipole, gauge::EmGauge, omega::Float64,
+                            finalLevel::IJF_Level, initialLevel::IJF_Level, grid::Radial.Grid; printout=true)`
+    ... to compute the radiative (mulipole) transition amplitude between two hyperfine levels;
         a amplitude::ComplexF64 is returned.
 """
-function  amplitude(kind::String, mp::EmMultipole, gauge::EmGauge, omega::Float64, 
+function  amplitude(::Emission, mp::EmMultipole, gauge::EmGauge, omega::Float64,
                     finalLevel::IJF_Level, initialLevel::IJF_Level, grid::Radial.Grid; printout=true)
     function doublefactorial(L::Int64)
         # Need to be implemented properly
@@ -358,40 +358,37 @@ function  amplitude(kind::String, mp::EmMultipole, gauge::EmGauge, omega::Float6
         elseif   L == 5     return(  15 )
         elseif   L == 7     return( 105 )
         else     error("stop a")
-        end 
+        end
     end
 
-    if kind == "emission"
-        amp = ComplexF64(0.)
-        for  (ib, ibState)  in  enumerate(initialLevel.basis)
-            for  (fb, fbState)  in  enumerate(finalLevel.basis)
-                # First, compute the nuclear transition, if possible
-                if   abs(finalLevel.mc[fb] * initialLevel.mc[ib]) > 0.8  &&   fbState.levelJ.index == ibState.levelJ.index
-                    Lx=2*mp.L+1
-                    Ly=doublefactorial(Lx)
-                    Lz=sqrt((mp.L+1)*Lx/4/pi/mp.L)*(Defaults.getDefaults("alpha") * omega)^mp.L/Ly
-                    amp = amp + AngularMomentum.phaseFactor([fbState.isomer.spinI, +1, AngularJ64(mp.L), +1, ibState.F, +1, ibState.levelJ.J]) * 
-                                AngularMomentum.Wigner_6j(fbState.isomer.spinI, ibState.isomer.spinI, AngularJ64(mp.L), 
-                                                          ibState.F, fbState.F, ibState.levelJ.J)                                              *
-                                Hfs.computeInteractionAmplitudeM(mp, fbState.isomer, ibState.isomer)                                           *
-                                Lz
-                end
-                # Second, compute the contributions due to the change in the electronic state
-                if (ibState.levelJ.index==initialLevel.index && ibState.F==initialLevel.F && ibState.isomer.spinI==initialLevel.I) || 
-                   (fbState.levelJ.index==finalLevel.index && fbState.F== finalLevel.F && fbState.isomer.spinI==finalLevel.I)
-                    if fbState.isomer.spinI==ibState.isomer.spinI                   
-                        amp = amp + finalLevel.mc[fb] * initialLevel.mc[ib] * 
-                                AngularMomentum.phaseFactor([ibState.levelJ.J, +1, AngularJ64(mp.L), +1, fbState.F, +1, fbState.isomer.spinI])     *                       
-                        AngularMomentum.Wigner_6j(fbState.levelJ.J, ibState.levelJ.J, AngularJ64(mp.L), 
-                        ibState.F, fbState.F, fbState.isomer.spinI)                           *
-                                PhotoEmission.amplitude_Wu(kind, mp, gauge, omega, fbState.levelJ, ibState.levelJ, grid, display=false)                         
-                   end
-                end             
+    amp = ComplexF64(0.)
+    for  (ib, ibState)  in  enumerate(initialLevel.basis)
+        for  (fb, fbState)  in  enumerate(finalLevel.basis)
+            # First, compute the nuclear transition, if possible
+            if   abs(finalLevel.mc[fb] * initialLevel.mc[ib]) > 0.8  &&   fbState.levelJ.index == ibState.levelJ.index
+                Lx=2*mp.L+1
+                Ly=doublefactorial(Lx)
+                Lz=sqrt((mp.L+1)*Lx/4/pi/mp.L)*(Defaults.getDefaults("alpha") * omega)^mp.L/Ly
+                amp = amp + AngularMomentum.phaseFactor([fbState.isomer.spinI, +1, AngularJ64(mp.L), +1, ibState.F, +1, ibState.levelJ.J]) *
+                            AngularMomentum.Wigner_6j(fbState.isomer.spinI, ibState.isomer.spinI, AngularJ64(mp.L),
+                                                      ibState.F, fbState.F, ibState.levelJ.J)                                              *
+                            Hfs.computeInteractionAmplitudeM(mp, fbState.isomer, ibState.isomer)                                           *
+                            Lz
+            end
+            # Second, compute the contributions due to the change in the electronic state
+            if (ibState.levelJ.index==initialLevel.index && ibState.F==initialLevel.F && ibState.isomer.spinI==initialLevel.I) ||
+               (fbState.levelJ.index==finalLevel.index && fbState.F== finalLevel.F && fbState.isomer.spinI==finalLevel.I)
+                if fbState.isomer.spinI==ibState.isomer.spinI
+                    amp = amp + finalLevel.mc[fb] * initialLevel.mc[ib] *
+                            AngularMomentum.phaseFactor([ibState.levelJ.J, +1, AngularJ64(mp.L), +1, fbState.F, +1, fbState.isomer.spinI])     *
+                    AngularMomentum.Wigner_6j(fbState.levelJ.J, ibState.levelJ.J, AngularJ64(mp.L),
+                    ibState.F, fbState.F, fbState.isomer.spinI)                           *
+                            PhotoEmission.amplitude_Wu(Emission(), mp, gauge, omega, fbState.levelJ, ibState.levelJ, grid, display=false)
+               end
             end
         end
-    else   error("stop a")
     end
-    
+
     return( amp )
 end
 
@@ -415,8 +412,8 @@ function  computeAmplitudesProperties(line::HyperfineInduced.Line, grid::Radial.
     newChannels = HyperfineInduced.Channel[];    rateC = rateB = 0.
     for channel in line.channels
         #
-        amplitude = HyperfineInduced.amplitude("emission", channel.multipole, channel.gauge, line.omega, 
-                                                           line.finalLevel, line.initialLevel, grid, printout=printout)
+        amplitude = HyperfineInduced.amplitude(Emission(), channel.multipole, channel.gauge, line.omega,
+                                                         line.finalLevel, line.initialLevel, grid, printout=printout)
         Lx        = 2 * channel.multipole.L + 1;           Ly = doublefactorial(Lx)^2
         Fx        = Basics.twice(line.finalLevel.F)
         rate      = 2 * Lx * Fx / Ly * (Defaults.getDefaults("alpha") * line.omega)^Lx *
@@ -451,7 +448,7 @@ end
 function  computeLines(finalMultiplet::Multiplet, initialMultiplet::Multiplet, nm::Nuclear.Model, grid::Radial.Grid, 
                        settings::HyperfineInduced.Settings; output=true) 
     # Define a common subshell list for both multiplets
-    subshellList = Basics.generate("subshells: ordered list for two bases", finalMultiplet.levels[1].basis, initialMultiplet.levels[1].basis)
+    subshellList = Basics.generate(OrderedSubshellList(), finalMultiplet.levels[1].basis, initialMultiplet.levels[1].basis)
     Defaults.setDefaults("relativistic subshell list", subshellList; printout=true)
     println("")
     printstyled("HyperfineInduced.computeLines(): The computation of hyperfine-induced transition amplitudes starts now ... \n", color=:light_green)
@@ -511,7 +508,7 @@ end
 function  computeLines(finalMultiplet::Multiplet, initialMultiplet::Multiplet, nm::Nuclear.Model, grid::Radial.Grid, 
                        settings::HyperfineInduced.Settings; output=true) 
     # Define a common subshell list for both multiplets
-    subshellList = Basics.generate("subshells: ordered list for two bases", finalMultiplet.levels[1].basis, initialMultiplet.levels[1].basis)
+    subshellList = Basics.generate(OrderedSubshellList(), finalMultiplet.levels[1].basis, initialMultiplet.levels[1].basis)
     Defaults.setDefaults("relativistic subshell list", subshellList; printout=true)
     println("")
     printstyled("HyperfineInduced.computeLines(): The computation of hyperfine-induced transition amplitudes starts now ... \n", color=:light_green)
@@ -960,9 +957,9 @@ function  displayRates(stream::IO, lines::Array{HyperfineInduced.Line,1}, settin
             sa = sa * TableStrings.center(9,  string(ch.multipole); na=4)
             sa = sa * TableStrings.flushleft(11, string(ch.gauge);  na=2)
             chRate =  8pi * Defaults.getDefaults("alpha") * line.omega / (Basics.twice(line.initialLevel.F) + 1) * (abs(ch.amplitude)^2) 
-            sa = sa * @sprintf("%.6e", Basics.recast("rate: radiative, to Einstein A",    line, chRate)) * "  "
-            sa = sa * @sprintf("%.6e", Basics.recast("rate: radiative, to Einstein B",    line, chRate)) * "    "
-            sa = sa * @sprintf("%.6e", Basics.recast("rate: radiative, to decay width",   line, chRate)) * "    "
+            sa = sa * @sprintf("%.6e", Basics.recast(RecastRateToEinsteinA(),    line, chRate)) * "  "
+            sa = sa * @sprintf("%.6e", Basics.recast(RecastRateToEinsteinB(),    line, chRate)) * "    "
+            sa = sa * @sprintf("%.6e", Basics.recast(RecastRateToDecayWidth(),   line, chRate)) * "    "
             println(stream, sa)
         end
     end
@@ -1007,9 +1004,9 @@ function  displayRates(stream::IO, lines::Array{HyperfineInduced.Line,1}, settin
             sa = sa * TableStrings.center(9,  string(ch.multipole); na=4)
             sa = sa * TableStrings.flushleft(11, string(ch.gauge);  na=2)
             chRate =  8pi * Defaults.getDefaults("alpha") * line.omega * (Basics.twice(line.finalLevel.F) + 1) * (abs(ch.amplitude)^2) 
-            sa = sa * @sprintf("%.6e", Basics.recast("rate: radiative, to Einstein A",    line, chRate)) * "  "
-            sa = sa * @sprintf("%.6e", Basics.recast("rate: radiative, to Einstein B",    line, chRate)) * "    "
-            sa = sa * @sprintf("%.6e", Basics.recast("rate: radiative, to decay width",   line, chRate)) * "    "
+            sa = sa * @sprintf("%.6e", Basics.recast(RecastRateToEinsteinA(),    line, chRate)) * "  "
+            sa = sa * @sprintf("%.6e", Basics.recast(RecastRateToEinsteinB(),    line, chRate)) * "    "
+            sa = sa * @sprintf("%.6e", Basics.recast(RecastRateToDecayWidth(),   line, chRate)) * "    "
             println(stream, sa)
         end
     end
@@ -1038,7 +1035,6 @@ function  generateBasis(multiplet::Multiplet, index::Int64, addIndices::Array{In
         for  isomer in isomers
             for level  in  multiplet.levels
                 if  level.index  in  index  ||   level.index  in  addIndices 
-                    ##x @show level.J
                     if   AngularMomentum.isTriangle(isomer.spinI, level.J, F)
                         push!(basis, HyperfineInduced.IJF_Vector(F, isomer, level) )
                     end 

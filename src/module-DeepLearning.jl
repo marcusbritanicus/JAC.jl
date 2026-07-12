@@ -83,9 +83,9 @@ function Application(app::DeepLearning.Application;
     name::Union{Nothing,String}=nothing,                                                         
     atomicModel::Union{Nothing,AtomicFeatures.AtomicModel}=nothing,   request::Union{Nothing,AbstractNeuralNetworkRequest}=nothing)
     
-    if  name                 == nothing   namex                 = app.name                     else  namex = name                              end 
-    if  atomicModel          == nothing   atomicModelx          = app.nuclearModel             else  atomicModelx = atomicModel                end 
-    if  request              == nothing   requestx              = app.request                  else  requestx = request                        end 
+    if  isnothing(name)                   namex                 = app.name                     else  namex = name                              end 
+    if  isnothing(atomicModel)            atomicModelx          = app.nuclearModel             else  atomicModelx = atomicModel                end 
+    if  isnothing(request)                requestx              = app.request                  else  requestx = request                        end 
     
     Application(namex, atomicModelx, requestx)
 end
@@ -107,8 +107,6 @@ end
 # `Base.show(io::IO, applic::DeepLearning.Application)`  ... prepares a proper printout applic::DeepLearning.Application.
 function Base.show(io::IO, applic::DeepLearning.Application)
     sa = Base.string(applic)
-    ##x sa = sa * "\n ... in addition, the following parameters/settings are defined: ";       print(io, sa, "\n")
-    ##x println(io, "> cascade scheme:           $(comp.scheme)  ")
 end
 
 

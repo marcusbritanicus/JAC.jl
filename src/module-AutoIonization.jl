@@ -70,16 +70,16 @@ function Settings(set::AutoIonization.Settings;
     maxKappa::Union{Nothing,Int64}=nothing,                 operator::Union{Nothing,String}=nothing,
     gMultiplet::Union{Nothing,Multiplet}=nothing)  
     
-    if  calcAnisotropy   == nothing   calcAnisotropyx    = set.calcAnisotropy    else  calcAnisotropyx    = calcAnisotropy    end 
-    if  calcTeAuger      == nothing   calcTeAugerx       = set.calcTeAuger       else  calcTeAugerx       = calcTeAuger       end 
-    if  printBefore      == nothing   printBeforex       = set.printBefore       else  printBeforex       = printBefore       end 
-    if  lineSelection    == nothing   lineSelectionx     = set.lineSelection     else  lineSelectionx     = lineSelection     end 
-    if  augerEnergyShift == nothing   augerEnergyShiftx  = set.augerEnergyShift  else  augerEnergyShiftx  = augerEnergyShift  end 
-    if  minAugerEnergy   == nothing   minAugerEnergyx    = set.minAugerEnergy    else  minAugerEnergyx    = minAugerEnergy    end 
-    if  maxAugerEnergy   == nothing   maxAugerEnergyx    = set.maxAugerEnergy    else  maxAugerEnergyx    = maxAugerEnergy    end 
-    if  maxKappa         == nothing   maxKappax          = set.maxKappa          else  maxKappax          = maxKappa          end 
-    if  operator         == nothing   operatorx          = set.operator          else  operatorx          = operator          end 
-    if  gMultiplet       == nothing   gMultipletx        = set.gMultiplet        else  gMultipletx        = gMultiplet        end 
+    if  isnothing(calcAnisotropy)     calcAnisotropyx    = set.calcAnisotropy    else  calcAnisotropyx    = calcAnisotropy    end 
+    if  isnothing(calcTeAuger)        calcTeAugerx       = set.calcTeAuger       else  calcTeAugerx       = calcTeAuger       end 
+    if  isnothing(printBefore)        printBeforex       = set.printBefore       else  printBeforex       = printBefore       end 
+    if  isnothing(lineSelection)      lineSelectionx     = set.lineSelection     else  lineSelectionx     = lineSelection     end 
+    if  isnothing(augerEnergyShift)   augerEnergyShiftx  = set.augerEnergyShift  else  augerEnergyShiftx  = augerEnergyShift  end 
+    if  isnothing(minAugerEnergy)     minAugerEnergyx    = set.minAugerEnergy    else  minAugerEnergyx    = minAugerEnergy    end 
+    if  isnothing(maxAugerEnergy)     maxAugerEnergyx    = set.maxAugerEnergy    else  maxAugerEnergyx    = maxAugerEnergy    end 
+    if  isnothing(maxKappa)           maxKappax          = set.maxKappa          else  maxKappax          = maxKappa          end 
+    if  isnothing(operator)           operatorx          = set.operator          else  operatorx          = operator          end 
+    if  isnothing(gMultiplet)         gMultipletx        = set.gMultiplet        else  gMultipletx        = gMultiplet        end 
 
     Settings( calcAnisotropyx, calcTeAugerx, printBeforex, lineSelectionx, augerEnergyShiftx, 
               minAugerEnergyx, maxAugerEnergyx, maxKappax, operatorx, gMultipletx)
@@ -220,7 +220,7 @@ function amplitude(kind::AbstractEeInteraction, channel::AutoIonization.Channel,
                 if  iLevel.basis.csfs[s].J != iLevel.J  ||  iLevel.basis.csfs[s].parity != iLevel.parity      continue    end 
                     # Calculate the spin-angular coefficients
                 if  Defaults.saRatip()
-                    waR = compute("angular coefficients: e-e, Ratip2013", continuumLevel.basis.csfs[r], initialLevel.basis.csfs[s])
+                    waR = compute(AngularCoeffsEeRatip2013(), continuumLevel.basis.csfs[r], initialLevel.basis.csfs[s])
                     wa  = waR       
                 end
                 if  Defaults.saGG()
@@ -296,7 +296,7 @@ function computeAmplitudesProperties(line::AutoIonization.Line, nm::Nuclear.Mode
                                         settings::AutoIonization.Settings; printout::Bool=true) 
     newChannels = AutoIonization.Channel[];   contSettings = Continuum.Settings(false, nrContinuum);   rate = 0.
     # Define a common subshell list for both multiplets
-    subshellList = Basics.generate("subshells: ordered list for two bases", line.finalLevel.basis, line.initialLevel.basis)
+    subshellList = Basics.generate(OrderedSubshellList(), line.finalLevel.basis, line.initialLevel.basis)
     Defaults.setDefaults("relativistic subshell list", subshellList; printout=false)
     
     for channel in line.channels
@@ -440,7 +440,7 @@ function  computeLines(finalMultiplet::Multiplet, initialMultiplet::Multiplet, n
     printSummary, iostream = Defaults.getDefaults("summary flag/stream")
     if  printSummary   AutoIonization.displayRates(iostream, newLines, settings);   AutoIonization.displayLifetimes(iostream, newLines)     end
     #
-    if    output    return( lines )
+    if    output    return( newLines )
     else            return( nothing )
     end
 end
@@ -497,7 +497,7 @@ function  computeLinesFromOrbitals(finalMultiplet::Multiplet, initialMultiplet::
     
     for  (i,line)  in  enumerate(lines)
         # Define a common subshell list for both multiplets
-        subshellList = Basics.generate("subshells: ordered list for two bases", line.finalLevel.basis, line.initialLevel.basis)
+        subshellList = Basics.generate(OrderedSubshellList(), line.finalLevel.basis, line.initialLevel.basis)
         Defaults.setDefaults("relativistic subshell list", subshellList; printout=false)
     
         if  rem(i,500) == 0    println("> Auger line $i:  ... calculated ")    end

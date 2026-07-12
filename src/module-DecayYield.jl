@@ -34,6 +34,25 @@ function Settings()
 end
 
 
+"""
+`DecayYield.Settings(set::DecayYield.Settings;`
+
+        approach=.., printBefore=.., geant4=.., levelSelection=..)
+
+    ... keyword copy-constructor for re-defining selected values of a settings::DecayYield.Settings.
+"""
+function Settings(set::DecayYield.Settings;
+        approach::Union{Nothing,String}=nothing,           printBefore::Union{Nothing,Bool}=nothing,
+        geant4::Union{Nothing,Bool}=nothing,               levelSelection::Union{Nothing,LevelSelection}=nothing)
+    if  isnothing(approach)         approachx       = set.approach       else   approachx       = approach       end
+    if  isnothing(printBefore)      printBeforex    = set.printBefore    else   printBeforex    = printBefore    end
+    if  isnothing(geant4)           geant4x         = set.geant4         else   geant4x         = geant4         end
+    if  isnothing(levelSelection)   levelSelectionx = set.levelSelection else   levelSelectionx = levelSelection end
+
+    Settings( approachx, printBeforex, geant4x, levelSelectionx )
+end
+
+
 # `Base.show(io::IO, settings::DecayYield.Settings)`  ... prepares a proper printout of the variable settings::DecayYield.Settings.
 function Base.show(io::IO, settings::DecayYield.Settings) 
     println(io, "approach:                 $(settings.approach)  ")

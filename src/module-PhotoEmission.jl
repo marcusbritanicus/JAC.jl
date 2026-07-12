@@ -65,15 +65,15 @@ function Settings(set::PhotoEmission.Settings;
     photonEnergyShift::Union{Nothing,Float64}=nothing,          mimimumPhotonEnergy::Union{Nothing,Float64}=nothing, 
     maximumPhotonEnergy::Union{Nothing,Float64}=nothing)
     
-    if  multipoles          == nothing   multipolesx          = set.multipoles              else  multipolesx          = multipoles            end 
-    if  gauges              == nothing   gaugesx              = set.gauges                  else  gaugesx              = gauges                end 
-    if  calcAnisotropy      == nothing   calcAnisotropyx      = set.calcAnisotropy          else  calcAnisotropyx      = calcAnisotropy        end 
-    if  printBefore         == nothing   printBeforex         = set.printBefore             else  printBeforex         = printBefore           end 
-    if  corePolarization    == nothing   corePolarizationx    = set.corePolarization        else  corePolarizationx    = corePolarization      end 
-    if  lineSelection       == nothing   lineSelectionx       = set.lineSelection           else  lineSelectionx       = lineSelection         end 
-    if  photonEnergyShift   == nothing   photonEnergyShiftx   = set.photonEnergyShift       else  photonEnergyShiftx   = photonEnergyShift     end 
-    if  mimimumPhotonEnergy == nothing   mimimumPhotonEnergyx = set.mimimumPhotonEnergy     else  mimimumPhotonEnergyx = mimimumPhotonEnergy   end 
-    if  maximumPhotonEnergy == nothing   maximumPhotonEnergyx = set.maximumPhotonEnergy     else  maximumPhotonEnergyx = maximumPhotonEnergy   end 
+    if  isnothing(multipoles)            multipolesx          = set.multipoles              else  multipolesx          = multipoles            end 
+    if  isnothing(gauges)                gaugesx              = set.gauges                  else  gaugesx              = gauges                end 
+    if  isnothing(calcAnisotropy)        calcAnisotropyx      = set.calcAnisotropy          else  calcAnisotropyx      = calcAnisotropy        end 
+    if  isnothing(printBefore)           printBeforex         = set.printBefore             else  printBeforex         = printBefore           end 
+    if  isnothing(corePolarization)      corePolarizationx    = set.corePolarization        else  corePolarizationx    = corePolarization      end 
+    if  isnothing(lineSelection)         lineSelectionx       = set.lineSelection           else  lineSelectionx       = lineSelection         end 
+    if  isnothing(photonEnergyShift)     photonEnergyShiftx   = set.photonEnergyShift       else  photonEnergyShiftx   = photonEnergyShift     end 
+    if  isnothing(mimimumPhotonEnergy)   mimimumPhotonEnergyx = set.mimimumPhotonEnergy     else  mimimumPhotonEnergyx = mimimumPhotonEnergy   end 
+    if  isnothing(maximumPhotonEnergy)   maximumPhotonEnergyx = set.maximumPhotonEnergy     else  maximumPhotonEnergyx = maximumPhotonEnergy   end 
     
     Settings( multipolesx, gaugesx, calcAnisotropyx, printBeforex, corePolarizationx, lineSelectionx, 
               photonEnergyShiftx, mimimumPhotonEnergyx, maximumPhotonEnergyx)
@@ -160,203 +160,205 @@ end
 
 
 """
-`PhotoEmission.amplitude(kind::String, Mp::EmMultipole, gauge::EmGauge, omega::Float64, finalLevel::Level, initialLevel::Level, 
-                            grid::Radial.Grid; display::Bool=false, printout::Bool=false)`  
-    ... to compute the kind = (absorption or emission) amplitude  <alpha_f J_f || O^(Mp, kind) || alpha_i J_i> for the 
-        interaction with  photon of multipolarity Mp and for the given transition energy and gauge. A value::ComplexF64 is 
+`PhotoEmission.amplitude(::Emission, Mp::EmMultipole, gauge::EmGauge, omega::Float64, finalLevel::Level, initialLevel::Level,
+                            grid::Radial.Grid; display::Bool=false, printout::Bool=false)`
+    ... to compute the photon emission amplitude  <alpha_f J_f || O^(Mp) || alpha_i J_i> for the
+        interaction with a photon of multipolarity Mp and for the given transition energy and gauge. A value::ComplexF64 is
         returned. The amplitude value is printed to screen if display=true.
 """
-function amplitude(kind::String, Mp::EmMultipole, gauge::EmGauge, omega::Float64, finalLevel::Level, initialLevel::Level, 
+function amplitude(::Emission, Mp::EmMultipole, gauge::EmGauge, omega::Float64, finalLevel::Level, initialLevel::Level,
                     grid::Radial.Grid; display::Bool=false, printout::Bool=false)
-    
-    if      kind == "emission"
-    #-------------------------
-        if  initialLevel.basis.subshells == finalLevel.basis.subshells
-            iLevel = initialLevel;   fLevel = finalLevel
-        else
-            subshells = Basics.merge(initialLevel.basis.subshells, finalLevel.basis.subshells)
-            iLevel    = Level(initialLevel, subshells)
-            fLevel    = Level(finalLevel, subshells)
-        end
-        
-        nf = length(fLevel.basis.csfs);    ni = length(iLevel.basis.csfs)
-        if  printout   printstyled("Compute radiative $(Mp) matrix of dimension $nf x $ni in the initial- and final-state bases " *
-                                    "for the transition [$(iLevel.index)-$(fLevel.index)] ... ", color=:light_green)    end
-        matrix = zeros(ComplexF64, nf, ni)
-        #
-        for  r = 1:nf
-            if  fLevel.basis.csfs[r].J != fLevel.J      ||  fLevel.basis.csfs[r].parity  != fLevel.parity    continue    end 
-            for  s = 1:ni
-                if  iLevel.basis.csfs[s].J != iLevel.J  ||  iLevel.basis.csfs[s].parity  != iLevel.parity    continue    end 
-                subshellList = fLevel.basis.subshells
-                opa = SpinAngular.OneParticleOperator(Mp.L, plus, true)
-                wa  = SpinAngular.computeCoefficients(opa, fLevel.basis.csfs[r], iLevel.basis.csfs[s], subshellList) 
-                me = 0.
-                for  coeff in wa
-                    ## MbaJohnsonx = InteractionStrength.MbaEmissionJohnsonx(Mp, gauge, omega, fLevel.basis.orbitals[coeff.a],  
-                    ##                                                                         iLevel.basis.orbitals[coeff.b], grid)
-                    MabJohnsony = InteractionStrength.MabEmissionJohnsony(Mp, gauge, omega, fLevel.basis.orbitals[coeff.a],  
-                                                                                            iLevel.basis.orbitals[coeff.b], grid)
-                    ja = Basics.subshell_2j(fLevel.basis.orbitals[coeff.a].subshell)
-                    ## jb = Basics.subshell_2j(iLevel.basis.orbitals[coeff.b].subshell)
-                    me = me + coeff.T * MabJohnsony / sqrt( ja + 1) * sqrt( (Basics.twice(fLevel.J) + 1))      ## * sqrt( jb + 1)
-                    ##x @show coeff.a, coeff.b, Mp, gauge, MbaJohnsonx, MabJohnsony, abs(MbaJohnsonx/MabJohnsony)
-                end
-                matrix[r,s] = me
-            end
-        end 
-        if  printout   printstyled("done. \n", color=:light_green)    end
-        amplitude = transpose(fLevel.mc) * matrix * iLevel.mc 
-        ##x @show "*******", iLevel.index, fLevel.index, amplitude, iLevel.J, fLevel.J
-        #
-        #
-    elseif  kind == "absorption"
-    #---------------------------
-        iLevel = finalLevel;   fLevel = initialLevel
-        amplitude = PhotoEmission.amplitude("emission", Mp, gauge, omega, fLevel, iLevel, grid, printout=printout) 
-        amplitude = conj(amplitude)
-    else    error("stop a")
+    if  initialLevel.basis.subshells == finalLevel.basis.subshells
+        iLevel = initialLevel;   fLevel = finalLevel
+    else
+        subshells = Basics.merge(initialLevel.basis.subshells, finalLevel.basis.subshells)
+        iLevel    = Level(initialLevel, subshells)
+        fLevel    = Level(finalLevel, subshells)
     end
+
+    nf = length(fLevel.basis.csfs);    ni = length(iLevel.basis.csfs)
+    if  printout   printstyled("Compute radiative $(Mp) matrix of dimension $nf x $ni in the initial- and final-state bases " *
+                                "for the transition [$(iLevel.index)-$(fLevel.index)] ... ", color=:light_green)    end
+    matrix = zeros(ComplexF64, nf, ni)
+    #
+    for  r = 1:nf
+        if  fLevel.basis.csfs[r].J != fLevel.J      ||  fLevel.basis.csfs[r].parity  != fLevel.parity    continue    end
+        for  s = 1:ni
+            if  iLevel.basis.csfs[s].J != iLevel.J  ||  iLevel.basis.csfs[s].parity  != iLevel.parity    continue    end
+            subshellList = fLevel.basis.subshells
+            opa = SpinAngular.OneParticleOperator(Mp.L, plus, true)
+            wa  = SpinAngular.computeCoefficients(opa, fLevel.basis.csfs[r], iLevel.basis.csfs[s], subshellList)
+            me = 0.
+            for  coeff in wa
+                ## MbaJohnsonx = InteractionStrength.MbaEmissionJohnsonx(Mp, gauge, omega, fLevel.basis.orbitals[coeff.a],
+                ##                                                                         iLevel.basis.orbitals[coeff.b], grid)
+                MabJohnsony = InteractionStrength.MabEmissionJohnsony(Mp, gauge, omega, fLevel.basis.orbitals[coeff.a],
+                                                                                        iLevel.basis.orbitals[coeff.b], grid)
+                ja = Basics.subshell_2j(fLevel.basis.orbitals[coeff.a].subshell)
+                ## jb = Basics.subshell_2j(iLevel.basis.orbitals[coeff.b].subshell)
+                me = me + coeff.T * MabJohnsony / sqrt( ja + 1) * sqrt( (Basics.twice(fLevel.J) + 1))      ## * sqrt( jb + 1)
+            end
+            matrix[r,s] = me
+        end
+    end
+    if  printout   printstyled("done. \n", color=:light_green)    end
+    amplitude = transpose(fLevel.mc) * matrix * iLevel.mc
     # Multiply with the multipolarity factors to keep different multipoles on the same footings; this factor need to be better understood
     # amplitude = amplitude * sqrt( (2Mp.L+1)*(Mp.L+1)/Mp.L )
-    
-    if  display  
+
+    if  display
         println("    < level=$(finalLevel.index) [J=$(finalLevel.J)$(string(finalLevel.parity))] ||" *
-                " O^($Mp, $kind) ($omega a.u., $gauge) ||" *
+                " O^($Mp, emission) ($omega a.u., $gauge) ||" *
                 " $(initialLevel.index) [$(initialLevel.J)$(string(initialLevel.parity))] >  = $amplitude  ")
     end
-    
-    return( amplitude )
-end
-    
-    
-"""
-` +  amplitude_Wu(kind::String, Mp::EmMultipole, gauge::EmGauge, omega::Float64, finalLevel::Level, initialLevel::Level, 
-                  grid::Radial.Grid; display::Bool=false, printout::Bool=false)`  
-        ... to compute the kind = (absorption or emission) amplitude  <alpha_f J_f || O^(Mp, kind) || alpha_i J_i> for the 
-            interaction with  photon of multipolarity Mp and for the given transition energy and gauge. A value::ComplexF64 is 
-            returned. The radial function is calculated by InteractionStrength.MabEmissionJohnsony_Wu. The amplitude value is 
-            printed to screen if display=true.
-"""
-function amplitude_Wu(kind::String, Mp::EmMultipole, gauge::EmGauge, omega::Float64, finalLevel::Level, initialLevel::Level, 
-                    grid::Radial.Grid; display::Bool=false, printout::Bool=false)
-    
-    if      kind == "emission"
-    #-------------------------
-        if  initialLevel.basis.subshells == finalLevel.basis.subshells
-            iLevel = initialLevel;   fLevel = finalLevel
-        else
-            subshells = Basics.merge(initialLevel.basis.subshells, finalLevel.basis.subshells)
-            iLevel    = Level(initialLevel, subshells)
-            fLevel    = Level(finalLevel, subshells)
-        end
-        
-        nf = length(fLevel.basis.csfs);    ni = length(iLevel.basis.csfs)
-        if  printout   printstyled("Compute radiative $(Mp) matrix of dimension $nf x $ni in the initial- and final-state bases " *
-                                    "for the transition [$(iLevel.index)-$(fLevel.index)] ... ", color=:light_green)    end
-        matrix = zeros(ComplexF64, nf, ni)
-        #
-        for  r = 1:nf
-            if  fLevel.basis.csfs[r].J != fLevel.J      ||  fLevel.basis.csfs[r].parity  != fLevel.parity    continue    end 
-            for  s = 1:ni
-                if  iLevel.basis.csfs[s].J != iLevel.J  ||  iLevel.basis.csfs[s].parity  != iLevel.parity    continue    end 
-                subshellList = fLevel.basis.subshells
-                opa = SpinAngular.OneParticleOperator(Mp.L, plus, true)
-                wa  = SpinAngular.computeCoefficients(opa, fLevel.basis.csfs[r], iLevel.basis.csfs[s], subshellList) 
-                me = 0.
-                for  coeff in wa
-                    ## MbaJohnsonx = InteractionStrength.MbaEmissionJohnsonx(Mp, gauge, omega, fLevel.basis.orbitals[coeff.a],  
-                    ##                                                                         iLevel.basis.orbitals[coeff.b], grid)
-                    MabJohnsony = InteractionStrength.MabEmissionJohnsony_Wu(Mp, gauge, omega, fLevel.basis.orbitals[coeff.a],  
-                                                                                            iLevel.basis.orbitals[coeff.b], grid)
-                    ja = Basics.subshell_2j(fLevel.basis.orbitals[coeff.a].subshell)
-                    ## jb = Basics.subshell_2j(iLevel.basis.orbitals[coeff.b].subshell)
-                    me = me + coeff.T * MabJohnsony / sqrt( ja + 1) * sqrt( (Basics.twice(fLevel.J) + 1))      ## * sqrt( jb + 1)
-                end
-                matrix[r,s] = me
-            end
-        end 
-        if  printout   printstyled("done. \n", color=:light_green)    end
-        amplitude = transpose(fLevel.mc) * matrix * iLevel.mc 
-        #
-        #
-    elseif  kind == "absorption"
-    #---------------------------
-        iLevel = finalLevel;   fLevel = initialLevel
-        amplitude = PhotoEmission.amplitude("emission", Mp, gauge, omega, fLevel, iLevel, grid, printout=printout) 
-        amplitude = conj(amplitude)
-    else    error("stop a")
-    end
-    # Multiply with the multipolarity factors to keep different multipoles on the same footings; this factor need to be better understood
-    # amplitude = amplitude * sqrt( (2Mp.L+1)*(Mp.L+1)/Mp.L )
-    
-    if  display  
-        println("    < level=$(finalLevel.index) [J=$(finalLevel.J)$(string(finalLevel.parity))] ||" *
-                " O^($Mp, $kind) ($omega a.u., $gauge) ||" *
-                " $(initialLevel.index) [$(initialLevel.J)$(string(initialLevel.parity))] >  = $amplitude  ")
-    end
-    
+
     return( amplitude )
 end
 
+
 """
-`   + (kind::String, cp::CorePolarization, omega::Float64, finalLevel::Level, initialLevel::Level, grid::Radial.Grid; 
-        display::Bool=false, printout::Bool=false)`  
-        ... to compute the kind = E1 with core-polarization emission amplitude  
-            <alpha_f J_f || O^(E1, emission with core-polarization) || alpha_i J_i> in length gauge and for the given transition energy.
-            A value::ComplexF64 is returned. The amplitude value is printed to screen if display=true.
+` + amplitude(::Absorption, Mp::EmMultipole, gauge::EmGauge, omega::Float64, finalLevel::Level, initialLevel::Level,
+                grid::Radial.Grid; display::Bool=false, printout::Bool=false)`
+    ... to compute the photon absorption amplitude as the conjugate of the emission amplitude with swapped levels,
+        i.e. conj( <initialLevel || O^(Mp) || finalLevel> ).  A value::ComplexF64 is returned.
 """
-function amplitude(kind::String, cp::CorePolarization, omega::Float64, finalLevel::Level, initialLevel::Level, grid::Radial.Grid; 
-                    display::Bool=false, printout::Bool=false)
-    
-    if      kind == "E1 with core-polarization emission"
-    #---------------------------------------------------
-        if  initialLevel.basis.subshells == finalLevel.basis.subshells
-            iLevel = initialLevel;   fLevel = finalLevel
-        else
-            subshells = Basics.merge(initialLevel.basis.subshells, finalLevel.basis.subshells)
-            iLevel    = Level(initialLevel, subshells)
-            fLevel    = Level(finalLevel, subshells)
-        end
-        
-        nf = length(fLevel.basis.csfs);    ni = length(iLevel.basis.csfs)
-        if  printout   printstyled("Compute radiative E1 matrix of dimension $nf x $ni in the initial- and final-state bases " *
-                                    "for the transition [$(iLevel.index)-$(fLevel.index)] ... \n", color=:light_green)    end
-        matrix = zeros(ComplexF64, nf, ni)
-        #
-        for  r = 1:nf
-            if  fLevel.basis.csfs[r].J != fLevel.J      ||  fLevel.basis.csfs[r].parity  != fLevel.parity    continue    end 
-            for  s = 1:ni
-                if  iLevel.basis.csfs[s].J != iLevel.J  ||  iLevel.basis.csfs[s].parity  != iLevel.parity    continue    end 
-                subshellList = fLevel.basis.subshells
-                opa = SpinAngular.OneParticleOperator(1, plus, true)
-                wa  = SpinAngular.computeCoefficients(opa, fLevel.basis.csfs[r], iLevel.basis.csfs[s], subshellList) 
-                me  = 0.
-                for  coeff in wa
-                    MbaMigdalek = InteractionStrength.MbaEmissionMigdalek(cp, fLevel.basis.orbitals[coeff.a],  
-                                                                                iLevel.basis.orbitals[coeff.b], grid)
-                    MbaMigdalek = MbaMigdalek / Defaults.getDefaults("speed of light: c") * omega * sqrt(2.0) / 4.                                                       
-                    MabJohnsony = InteractionStrength.MabEmissionJohnsony(E1, Basics.Babushkin, omega, fLevel.basis.orbitals[coeff.a],  
-                                                                                                        iLevel.basis.orbitals[coeff.b], grid)
-                    ja = Basics.subshell_2j(fLevel.basis.orbitals[coeff.a].subshell)
-                    me = me + coeff.T * MbaMigdalek / sqrt( ja + 1) * sqrt( (Basics.twice(fLevel.J) + 1))
-                    @show MbaMigdalek, MabJohnsony
-                    end
-                matrix[r,s] = me
-            end
-        end 
-        if  printout   printstyled("done. \n", color=:light_green)    end
-        amplitude = transpose(fLevel.mc) * matrix * iLevel.mc 
-        #
-    else    error("stop a")
-    end
-    
-    if  display  
+function amplitude(::Absorption, Mp::EmMultipole, gauge::EmGauge, omega::Float64, finalLevel::Level, initialLevel::Level,
+                    grid::Radial.Grid; display::Bool=false, printout::Bool=false)
+    amplitude = conj( PhotoEmission.amplitude(Emission(), Mp, gauge, omega, initialLevel, finalLevel, grid; printout=printout) )
+    if  display
         println("    < level=$(finalLevel.index) [J=$(finalLevel.J)$(string(finalLevel.parity))] ||" *
-                " O^(E1, $kind) ($omega a.u., Length) ||" *
+                " O^($Mp, absorption) ($omega a.u., $gauge) ||" *
                 " $(initialLevel.index) [$(initialLevel.J)$(string(initialLevel.parity))] >  = $amplitude  ")
     end
-    
+    return( amplitude )
+end
+
+
+"""
+` +  amplitude_Wu(::Emission, Mp::EmMultipole, gauge::EmGauge, omega::Float64, finalLevel::Level, initialLevel::Level,
+                  grid::Radial.Grid; display::Bool=false, printout::Bool=false)`
+        ... to compute the photon emission amplitude  <alpha_f J_f || O^(Mp) || alpha_i J_i> for the
+            interaction with a photon of multipolarity Mp and for the given transition energy and gauge. A value::ComplexF64 is
+            returned. The radial function is calculated by InteractionStrength.MabEmissionJohnsony_Wu. The amplitude value is
+            printed to screen if display=true.
+"""
+function amplitude_Wu(::Emission, Mp::EmMultipole, gauge::EmGauge, omega::Float64, finalLevel::Level, initialLevel::Level,
+                    grid::Radial.Grid; display::Bool=false, printout::Bool=false)
+    if  initialLevel.basis.subshells == finalLevel.basis.subshells
+        iLevel = initialLevel;   fLevel = finalLevel
+    else
+        subshells = Basics.merge(initialLevel.basis.subshells, finalLevel.basis.subshells)
+        iLevel    = Level(initialLevel, subshells)
+        fLevel    = Level(finalLevel, subshells)
+    end
+
+    nf = length(fLevel.basis.csfs);    ni = length(iLevel.basis.csfs)
+    if  printout   printstyled("Compute radiative $(Mp) matrix of dimension $nf x $ni in the initial- and final-state bases " *
+                                "for the transition [$(iLevel.index)-$(fLevel.index)] ... ", color=:light_green)    end
+    matrix = zeros(ComplexF64, nf, ni)
+    #
+    for  r = 1:nf
+        if  fLevel.basis.csfs[r].J != fLevel.J      ||  fLevel.basis.csfs[r].parity  != fLevel.parity    continue    end
+        for  s = 1:ni
+            if  iLevel.basis.csfs[s].J != iLevel.J  ||  iLevel.basis.csfs[s].parity  != iLevel.parity    continue    end
+            subshellList = fLevel.basis.subshells
+            opa = SpinAngular.OneParticleOperator(Mp.L, plus, true)
+            wa  = SpinAngular.computeCoefficients(opa, fLevel.basis.csfs[r], iLevel.basis.csfs[s], subshellList)
+            me = 0.
+            for  coeff in wa
+                ## MbaJohnsonx = InteractionStrength.MbaEmissionJohnsonx(Mp, gauge, omega, fLevel.basis.orbitals[coeff.a],
+                ##                                                                         iLevel.basis.orbitals[coeff.b], grid)
+                MabJohnsony = InteractionStrength.MabEmissionJohnsony_Wu(Mp, gauge, omega, fLevel.basis.orbitals[coeff.a],
+                                                                                        iLevel.basis.orbitals[coeff.b], grid)
+                ja = Basics.subshell_2j(fLevel.basis.orbitals[coeff.a].subshell)
+                ## jb = Basics.subshell_2j(iLevel.basis.orbitals[coeff.b].subshell)
+                me = me + coeff.T * MabJohnsony / sqrt( ja + 1) * sqrt( (Basics.twice(fLevel.J) + 1))      ## * sqrt( jb + 1)
+            end
+            matrix[r,s] = me
+        end
+    end
+    if  printout   printstyled("done. \n", color=:light_green)    end
+    amplitude = transpose(fLevel.mc) * matrix * iLevel.mc
+    # Multiply with the multipolarity factors to keep different multipoles on the same footings; this factor need to be better understood
+    # amplitude = amplitude * sqrt( (2Mp.L+1)*(Mp.L+1)/Mp.L )
+
+    if  display
+        println("    < level=$(finalLevel.index) [J=$(finalLevel.J)$(string(finalLevel.parity))] ||" *
+                " O^($Mp, emission) ($omega a.u., $gauge) ||" *
+                " $(initialLevel.index) [$(initialLevel.J)$(string(initialLevel.parity))] >  = $amplitude  ")
+    end
+
+    return( amplitude )
+end
+
+
+"""
+` + amplitude_Wu(::Absorption, Mp::EmMultipole, gauge::EmGauge, omega::Float64, finalLevel::Level, initialLevel::Level,
+                  grid::Radial.Grid; display::Bool=false, printout::Bool=false)`
+    ... to compute the photon absorption amplitude (Wu variant) as the conjugate of the Wu emission amplitude with swapped levels.
+        A value::ComplexF64 is returned.
+"""
+function amplitude_Wu(::Absorption, Mp::EmMultipole, gauge::EmGauge, omega::Float64, finalLevel::Level, initialLevel::Level,
+                    grid::Radial.Grid; display::Bool=false, printout::Bool=false)
+    amplitude = conj( PhotoEmission.amplitude_Wu(Emission(), Mp, gauge, omega, initialLevel, finalLevel, grid; printout=printout) )
+    if  display
+        println("    < level=$(finalLevel.index) [J=$(finalLevel.J)$(string(finalLevel.parity))] ||" *
+                " O^($Mp, absorption) ($omega a.u., $gauge) ||" *
+                " $(initialLevel.index) [$(initialLevel.J)$(string(initialLevel.parity))] >  = $amplitude  ")
+    end
+    return( amplitude )
+end
+
+
+"""
+`PhotoEmission.amplitude(::Emission, cp::CorePolarization, omega::Float64, finalLevel::Level, initialLevel::Level, grid::Radial.Grid;
+                          display::Bool=false, printout::Bool=false)`
+    ... to compute the E1 emission amplitude with core-polarization correction
+        <alpha_f J_f || O^(E1, emission with core-polarization) || alpha_i J_i> in length gauge and for the given transition energy.
+        A value::ComplexF64 is returned. The amplitude value is printed to screen if display=true.
+"""
+function amplitude(::Emission, cp::CorePolarization, omega::Float64, finalLevel::Level, initialLevel::Level, grid::Radial.Grid;
+                    display::Bool=false, printout::Bool=false)
+    if  initialLevel.basis.subshells == finalLevel.basis.subshells
+        iLevel = initialLevel;   fLevel = finalLevel
+    else
+        subshells = Basics.merge(initialLevel.basis.subshells, finalLevel.basis.subshells)
+        iLevel    = Level(initialLevel, subshells)
+        fLevel    = Level(finalLevel, subshells)
+    end
+
+    nf = length(fLevel.basis.csfs);    ni = length(iLevel.basis.csfs)
+    if  printout   printstyled("Compute radiative E1 matrix of dimension $nf x $ni in the initial- and final-state bases " *
+                                "for the transition [$(iLevel.index)-$(fLevel.index)] ... \n", color=:light_green)    end
+    matrix = zeros(ComplexF64, nf, ni)
+    #
+    for  r = 1:nf
+        if  fLevel.basis.csfs[r].J != fLevel.J      ||  fLevel.basis.csfs[r].parity  != fLevel.parity    continue    end
+        for  s = 1:ni
+            if  iLevel.basis.csfs[s].J != iLevel.J  ||  iLevel.basis.csfs[s].parity  != iLevel.parity    continue    end
+            subshellList = fLevel.basis.subshells
+            opa = SpinAngular.OneParticleOperator(1, plus, true)
+            wa  = SpinAngular.computeCoefficients(opa, fLevel.basis.csfs[r], iLevel.basis.csfs[s], subshellList)
+            me  = 0.
+            for  coeff in wa
+                MbaMigdalek = InteractionStrength.MbaEmissionMigdalek(cp, fLevel.basis.orbitals[coeff.a],
+                                                                            iLevel.basis.orbitals[coeff.b], grid)
+                MbaMigdalek = MbaMigdalek / Defaults.getDefaults("speed of light: c") * omega * sqrt(2.0) / 4.
+                ja = Basics.subshell_2j(fLevel.basis.orbitals[coeff.a].subshell)
+                me = me + coeff.T * MbaMigdalek / sqrt( ja + 1) * sqrt( (Basics.twice(fLevel.J) + 1))
+            end
+            matrix[r,s] = me
+        end
+    end
+    if  printout   printstyled("done. \n", color=:light_green)    end
+    amplitude = transpose(fLevel.mc) * matrix * iLevel.mc
+
+    if  display
+        println("    < level=$(finalLevel.index) [J=$(finalLevel.J)$(string(finalLevel.parity))] ||" *
+                " O^(E1, emission with core-polarization) ($omega a.u., Length) ||" *
+                " $(initialLevel.index) [$(initialLevel.J)$(string(initialLevel.parity))] >  = $amplitude  ")
+    end
+
     return( amplitude )
 end
 
@@ -376,12 +378,12 @@ function  computeAmplitudesProperties(line::PhotoEmission.Line, grid::Radial.Gri
             elseif  channel.gauge     == Basics.Coulomb     ||    channel.gauge     == Basics.Magnetic
                 amplitude = 0.
             else
-                amplitude = PhotoEmission.amplitude("E1 with core-polarization emission", settings.corePolarization, line.omega, 
-                                                    line.finalLevel, line.initialLevel, grid, printout=printout)
+                amplitude = PhotoEmission.amplitude(Emission(), settings.corePolarization, line.omega,
+                                                    line.finalLevel, line.initialLevel, grid; printout=printout)
             end
         else
-            amplitude = PhotoEmission.amplitude("emission", channel.multipole, channel.gauge, line.omega, 
-                                                line.finalLevel, line.initialLevel, grid, printout=printout)
+            amplitude = PhotoEmission.amplitude(Emission(), channel.multipole, channel.gauge, line.omega,
+                                                line.finalLevel, line.initialLevel, grid; printout=printout)
         end
         #
         push!( newChannels, PhotoEmission.Channel( channel.multipole, channel.gauge, amplitude) )
@@ -409,9 +411,8 @@ end
 """
 function  computeLines(finalMultiplet::Multiplet, initialMultiplet::Multiplet, grid::Radial.Grid, settings::PhotoEmission.Settings; output=true) 
     # Define a common subshell list for both multiplets
-    subshellList = Basics.generate("subshells: ordered list for two bases", finalMultiplet.levels[1].basis, initialMultiplet.levels[1].basis)
+    subshellList = Basics.generate(OrderedSubshellList(), finalMultiplet.levels[1].basis, initialMultiplet.levels[1].basis)
     Defaults.setDefaults("relativistic subshell list", subshellList; printout=true)
-    ##x Defaults.setDefaults("standard grid", grid)
     println("")
     printstyled("PhotoEmission.computeLines(): The computation of the transition amplitudes and properties starts now ... \n", color=:light_green)
     printstyled("-------------------------------------------------------------------------------------------------------- \n", color=:light_green)
@@ -452,7 +453,7 @@ end
 function  computeLinesCascade(finalMultiplet::Multiplet, initialMultiplet::Multiplet, grid::Radial.Grid, 
                                 settings::PhotoEmission.Settings; output=true, printout::Bool=true) 
     # Define a common subshell list for both multiplets
-    subshellList = Basics.generate("subshells: ordered list for two bases", finalMultiplet.levels[1].basis, initialMultiplet.levels[1].basis)
+    subshellList = Basics.generate(OrderedSubshellList(), finalMultiplet.levels[1].basis, initialMultiplet.levels[1].basis)
     Defaults.setDefaults("relativistic subshell list", subshellList; printout=false)
     lines = PhotoEmission.determineLines(finalMultiplet, initialMultiplet, settings)
     ## Display all selected lines before the computations start
@@ -652,7 +653,6 @@ function  displayLifetimes(stream::IO, lines::Array{PhotoEmission.Line,1}, setti
     for  ii in  ilevels
         waCoulomb = waBabushkin = 0.
         for  i = 1:length(lines)
-            ##x @show  ii, lines[i].initialLevel.index
             if   lines[i].initialLevel.index == ii    
                 waCoulomb   = waCoulomb   + lines[i].photonRate.Coulomb
                 waBabushkin = waBabushkin + lines[i].photonRate.Babushkin
@@ -683,7 +683,6 @@ function  displayLifetimes(stream::IO, lines::Array{PhotoEmission.Line,1}, setti
         sa = sa * "Coulomb          " * @sprintf("%.6e",              1.0/irates[ii].Coulomb)     * "  "
         sa = sa * @sprintf("%.6e", Defaults.convertUnits("time: from atomic",   1.0/irates[ii].Coulomb) )   * "    "
         sa = sa * @sprintf("%.6e", Defaults.convertUnits("energy: from atomic",     irates[ii].Coulomb) )
-        ##x @show 1.0/Defaults.convertUnits("rate: from atomic",  irates[ii].Coulomb), irates[ii].Coulomb
         println(stream, sa)
         sa = repeat(" ", length(istr[ii]) )
         sa = sa * "Babushkin        " * @sprintf("%.6e",              1.0/irates[ii].Babushkin)   * "  "
@@ -779,12 +778,12 @@ function  displayRates(stream::IO, lines::Array{PhotoEmission.Line,1}, settings:
             sa = sa * TableStrings.center(9,  string(ch.multipole); na=4)
             sa = sa * TableStrings.flushleft(11, string(ch.gauge);  na=2)
             chRate =  8pi * Defaults.getDefaults("alpha") * line.omega / (Basics.twice(line.initialLevel.J) + 1) * (abs(ch.amplitude)^2) 
-            sa = sa * @sprintf("%.6e", Basics.recast("rate: radiative, to Einstein A",    line, chRate)) * "  "
-            sa = sa * @sprintf("%.6e", Basics.recast("rate: radiative, to Einstein B",    line, chRate)) * "    "
-            sa = sa * @sprintf("%.6e", Basics.recast("rate: radiative, to g_f",           line, chRate)) * "    "
-            sa = sa * @sprintf("%.6e", Basics.recast("rate: radiative, to decay width",   line, chRate)) * "    "
+            sa = sa * @sprintf("%.6e", Basics.recast(RecastRateToEinsteinA(),    line, chRate)) * "  "
+            sa = sa * @sprintf("%.6e", Basics.recast(RecastRateToEinsteinB(),    line, chRate)) * "    "
+            sa = sa * @sprintf("%.6e", Basics.recast(RecastRateToOscillatorGf(),           line, chRate)) * "    "
+            sa = sa * @sprintf("%.6e", Basics.recast(RecastRateToDecayWidth(),   line, chRate)) * "    "
             if  ch.multipole == E1
-                    sa = sa * @sprintf("%.6e", Basics.recast("rate: radiative, to S",     line, chRate)) * "    "
+                    sa = sa * @sprintf("%.6e", Basics.recast(RecastRateToLineStrengthS(),     line, chRate)) * "    "
             else    sa = sa * "  --  " 
             end
             println(stream, sa)

@@ -67,15 +67,15 @@ function Settings(set::ResonantInelastic.Settings;
     omegaInInterval::Union{Nothing,NamedTuple{(:lower, :upper), Tuple{Float64, Float64}} }=nothing,            
     omegaOutInterval::Union{Nothing,NamedTuple{(:lower, :upper), Tuple{Float64, Float64}} }=nothing)
     
-    if  multipoles          == nothing   multipolesx          = set.multipoles              else  multipolesx          = multipoles            end 
-    if  gauges              == nothing   gaugesx              = set.gauges                  else  gaugesx              = gauges                end 
-    if  calcRixsCI          == nothing   calcRixsCIx          = set.calcRixsCI              else  calcRixsCIx          = calcRixsCI            end 
-    if  printBefore         == nothing   printBeforex         = set.printBefore             else  printBeforex         = printBefore           end 
-    if  ciEnhancement       == nothing   ciEnhancementx       = set.ciEnhancement           else  ciEnhancementx       = ciEnhancement         end 
-    if  width               == nothing   widthx               = set.width                   else  widthx               = width                 end 
-    if  pathwaySelection    == nothing   pathwaySelectionx    = set.pathwaySelection        else  pathwaySelectionx    = pathwaySelection      end 
-    if  omegaInInterval     == nothing   omegaInIntervalx     = set.omegaInInterval         else  omegaInIntervalx     = omegaInInterval       end 
-    if  omegaOutInterval    == nothing   omegaOutIntervalx    = set.omegaOutInterval        else  omegaOutIntervalx    = omegaOutInterval      end 
+    if  isnothing(multipoles)            multipolesx          = set.multipoles              else  multipolesx          = multipoles            end 
+    if  isnothing(gauges)                gaugesx              = set.gauges                  else  gaugesx              = gauges                end 
+    if  isnothing(calcRixsCI)            calcRixsCIx          = set.calcRixsCI              else  calcRixsCIx          = calcRixsCI            end 
+    if  isnothing(printBefore)           printBeforex         = set.printBefore             else  printBeforex         = printBefore           end 
+    if  isnothing(ciEnhancement)         ciEnhancementx       = set.ciEnhancement           else  ciEnhancementx       = ciEnhancement         end 
+    if  isnothing(width)                 widthx               = set.width                   else  widthx               = width                 end 
+    if  isnothing(pathwaySelection)      pathwaySelectionx    = set.pathwaySelection        else  pathwaySelectionx    = pathwaySelection      end 
+    if  isnothing(omegaInInterval)       omegaInIntervalx     = set.omegaInInterval         else  omegaInIntervalx     = omegaInInterval       end 
+    if  isnothing(omegaOutInterval)      omegaOutIntervalx    = set.omegaOutInterval        else  omegaOutIntervalx    = omegaOutInterval      end 
     
     Settings( multipolesx, gaugesx, calcRixsCIx, printBeforex, ciEnhancementx, widthx, pathwaySelectionx, omegaInIntervalx, omegaOutIntervalx)
 end
@@ -165,14 +165,14 @@ function  computeAmplitudesProperties(pathway::ResonantInelastic.Pathway, grid::
     # Compute the amplitudes of the excitation and emission channels separately
     newExChannels = PhotoEmission.Channel[];    newEmChannels = PhotoEmission.Channel[]
     for exChannel in pathway.excitationChannels
-        amplitude    = PhotoEmission.amplitude("emission", exChannel.multipole, exChannel.gauge, pathway.omegaIn, 
+        amplitude    = PhotoEmission.amplitude(Emission(), exChannel.multipole, exChannel.gauge, pathway.omegaIn, 
                                                intermediateLevel, initialLevel, grid, display=false, printout=false)
         newExChannel = PhotoEmission.Channel( exChannel.multipole, exChannel.gauge, amplitude)
         push!( newExChannels, newExChannel)
     end
     
     for emChannel in pathway.emissionChannels
-        amplitude    = PhotoEmission.amplitude("emission", emChannel.multipole, emChannel.gauge, pathway.omegaOut, 
+        amplitude    = PhotoEmission.amplitude(Emission(), emChannel.multipole, emChannel.gauge, pathway.omegaOut, 
                                                intermediateLevel, pathway.finalLevel, grid, display=false, printout=false)
         newEmChannel = PhotoEmission.Channel( emChannel.multipole, emChannel.gauge, amplitude)
         push!( newEmChannels, newEmChannel)
@@ -219,8 +219,8 @@ end
 function  computePathways(finalMultiplet::Multiplet, intermediateMultiplet::Multiplet, initialMultiplet::Multiplet, 
                           grid::Radial.Grid, settings::ResonantInelastic.Settings; output=true) 
     # Define a common subshell list for all three multiplets
-    subshellList = Basics.generate("subshells: ordered list for two bases", intermediateMultiplet.levels[1].basis, initialMultiplet.levels[1].basis)
-    subshellList = Basics.generate("subshells: ordered list for two bases", finalMultiplet.levels[1].basis, intermediateMultiplet.levels[1].basis)
+    subshellList = Basics.generate(OrderedSubshellList(), intermediateMultiplet.levels[1].basis, initialMultiplet.levels[1].basis)
+    subshellList = Basics.generate(OrderedSubshellList(), finalMultiplet.levels[1].basis, intermediateMultiplet.levels[1].basis)
     Defaults.setDefaults("relativistic subshell list", subshellList; printout=true)
     println("")
     printstyled("ResonantInelastic.computeLines(): The computation of the pathway properties starts now ... \n", color=:light_green)

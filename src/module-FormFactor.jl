@@ -32,6 +32,24 @@ function Settings()
 end
 
 
+"""
+`FormFactor.Settings(set::FormFactor.Settings;`
+
+        qList=.., printBefore=.., levelSelection=..)
+
+    ... keyword copy-constructor for re-defining selected values of a settings::FormFactor.Settings.
+"""
+function Settings(set::FormFactor.Settings;
+        qList::Union{Nothing,Array{Float64,1}}=nothing,
+        printBefore::Union{Nothing,Bool}=nothing,          levelSelection::Union{Nothing,LevelSelection}=nothing)
+    if  isnothing(qList)            qListx          = set.qList          else   qListx          = qList          end
+    if  isnothing(printBefore)      printBeforex    = set.printBefore    else   printBeforex    = printBefore    end
+    if  isnothing(levelSelection)   levelSelectionx = set.levelSelection else   levelSelectionx = levelSelection end
+
+    Settings( qListx, printBeforex, levelSelectionx )
+end
+
+
 # `Base.show(io::IO, settings::FormFactor.Settings)`  ... prepares a proper printout of the variable settings::FormFactor.Settings.
 function Base.show(io::IO, settings::FormFactor.Settings) 
     println(io, "qList:                    $(settings.qList)  ")

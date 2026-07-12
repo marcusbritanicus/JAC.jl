@@ -1,11 +1,4 @@
 
-#== August 2025, the following replacements need to be made and tested properly:
-++ Replace:  Cascade.generateConfigurationsForHollowIons(initialConfigs::Array{Configurations,1}, intoShells::Array{Shell,1}, 
-                                                decayShells::Array{Shell,1}, noElectrons::Int64)
-++ 
-++ See Basics.generateConfigurations(Basics.ForHollowIons(), confs)
-==#
-
 # Functions and methods for scheme::Cascade.HollowIonScheme computations
 
 
@@ -144,11 +137,7 @@ function generateBlocks(scheme::Cascade.HollowIonScheme, comp::Cascade.Computati
         for  confa  in confs
             print("  Multiplet computations for $(string(confa)[1:end])   with $(confa.NoElectrons) electrons ... ")
             if  printSummary   println(iostream, "\n*  Multiplet computations for $(string(confa)[1:end])   with $(confa.NoElectrons) electrons ... ")   end
-                ##x @show confa, comp.asfSettings
-                ##x basis     = Basics.performSCF([confa], comp.nuclearModel, comp.grid, comp.asfSettings; printout=false)
                 basis     = SelfConsistent.performSCF([confa], comp.nuclearModel, comp.grid, comp.asfSettings; printout=false)
-                ##x multiplet = Basics.perform("computation: mutiplet from orbitals, no CI, CSF diagonal", [confa],  basis.orbitals, 
-                ##x                             comp.nuclearModel, comp.grid, comp.asfSettings; printout=false)
                 multiplet = Hamiltonian.performCIwithFrozenOrbitals([confa],  basis.orbitals, comp.nuclearModel, comp.grid, comp.asfSettings; printout=false)
             push!( blockList, Cascade.Block(confa.NoElectrons, [confa], true, multiplet) )
             println("and $(length(multiplet.levels[1].basis.csfs)) CSF done. ")
@@ -166,8 +155,6 @@ function generateBlocks(scheme::Cascade.HollowIonScheme, comp::Cascade.Computati
         for  confa  in confs
             print("  Multiplet computations for $(string(confa)[1:end])   with $(confa.NoElectrons) electrons ... ")
             if  printSummary   println(iostream, "\n*  Multiplet computations for $(string(confa)[1:end])   with $(confa.NoElectrons) electrons ... ")   end
-            ##x basis     = Basics.performSCF([confa], comp.nuclearModel, comp.grid, comp.asfSettings; printout=false)
-            ##x multiplet = Basics.performCI(basis,    comp.nuclearModel, comp.grid, comp.asfSettings; printout=false)
             multiplet = SelfConsistent.performSCF([confa], comp.nuclearModel, comp.grid, comp.asfSettings; printout=false)
             push!( blockList, Cascade.Block(confa.NoElectrons, [confa], true, multiplet) )
             println("and $(length(multiplet.levels[1].basis.csfs)) CSF done. ")
@@ -187,10 +174,10 @@ end
 """
 function generateConfigurationsForHollowIons(initialConfigs::Array{Configuration,1}, intoShells::Array{Shell,1}, 
                                                 decayShells::Array{Shell,1}, noElectrons::Int64)
-    # Generate all configurations with additional noElectrons in the intoShells 
+    # Generate all configurations with additional noElectrons in the intoShells
     newConfigs = copy(initialConfigs)
     for  ne = 1:noElectrons
-        newConfigs = Basics.generateConfigurationsWithElectronCapture(newConfigs,Shell[],intoShells,0)
+        newConfigs = Basics.generateConfigurationsForExcitationScheme(newConfigs, Basics.ExciteByCapture(), Shell[], Shell[], intoShells, 0)
     end
     #
     # Build configurations with all decayShells 'in between', even if zero occupation
@@ -205,7 +192,7 @@ function generateConfigurationsForHollowIons(initialConfigs::Array{Configuration
     decayConfigs = Configuration[];    dConfigs = copy(newConfigs)
     further = true
     while  further
-        dConfigs = Cascade.generateConfigurationsWith2OuterHoles(dConfigs, decayShells)
+        dConfigs = Basics.generateConfigurations(Basics.RemoveElectrons(2, decayShells), dConfigs)
         if length(dConfigs) > 0     append!(decayConfigs, dConfigs)     else   further = false      end
     end
     decayConfigs = unique(decayConfigs)
@@ -213,7 +200,7 @@ function generateConfigurationsForHollowIons(initialConfigs::Array{Configuration
     dConfigs = copy(newConfigs);   append!(dConfigs, decayConfigs)
     further = true
     while  further
-        dConfigs = Cascade.generateConfigurationsWith1OuterHole(dConfigs, decayShells)
+        dConfigs = Basics.generateConfigurations(Basics.RemoveElectrons(1, decayShells), dConfigs)
         if length(dConfigs) > 0     append!(decayConfigs, dConfigs)     else   further = false      end
     end
     decayConfigs = unique(decayConfigs)
@@ -308,8 +295,6 @@ function perform(scheme::HollowIonScheme, comp::Cascade.Computation; output::Boo
     #
     # Perform the SCF and CI computation for the intial-state multiplets if initial configurations are given
     if  comp.initialConfigs != Configuration[]
-        ##x basis      = Basics.performSCF(comp.initialConfigs, comp.nuclearModel, comp.grid, comp.asfSettings; printout=false)
-        ##x multiplet  = Basics.performCI(basis, comp.nuclearModel, comp.grid, comp.asfSettings; printout=false)
         multiplet  = SelfConsistent.performSCF(comp.initialConfigs, comp.nuclearModel, comp.grid, comp.asfSettings; printout=false)
         multiplets = [Multiplet("initial states", multiplet.levels)]
     else
@@ -323,7 +308,6 @@ function perform(scheme::HollowIonScheme, comp::Cascade.Computation; output::Boo
     wa = Cascade.generateConfigurationsForHollowIons(comp.initialConfigs, comp.scheme.intoShells, comp.scheme.decayShells, 
                                                         comp.scheme.NoCapturedElectrons)
     # Display and group all configuration together
-    ##x wb = Cascade.groupDisplayConfigurationList(comp.nuclearModel.Z, wa, sa="hollow ion configurations ")
     wb = Basics.displayConfigurations(comp.nuclearModel.Z, wa, sa="hollow ion configurations ")
     #
     # Determine first all configuration 'blocks' and from them the individual steps of the cascade

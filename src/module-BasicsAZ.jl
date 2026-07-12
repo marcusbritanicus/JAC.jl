@@ -8,7 +8,7 @@ module BasicsAZ
 using  Printf,  LinearAlgebra, GaussQuadrature, JenaAtomicCalculator, ..Basics, ..TableStrings
        ## using JenaAtomicCalculator ... since otherwise almost all other modules must be included explicitly
        
-#==    ..AlphaVariation, ..AngularMomentum, ..Atomic, ..AtomicState,  ..AutoIonization,  ..Basics, ..BsplinesN, ..Cascade, 
+#==    ..AlphaVariation, ..AngularMomentum, ..Atomic, ..AtomicState,  ..AutoIonization,  ..Basics, ..Bsplines, ..Cascade, 
        ..DecayYield, ..Defaults, ..DielectronicRecombination, ..DoubleAutoIonization, ..Einstein, ..FormFactor,
        ..HydrogenicIon, ..Hfs, ..HyperfineInduced, ..ImpactExcitation, ..ImpactExcitationAutoion, ..InteractionStrength,  
        ..InteractionStrengthQED,  ..InternalRecombination, ..IsotopeShift, 
@@ -23,12 +23,12 @@ using  Printf,  LinearAlgebra, GaussQuadrature, JenaAtomicCalculator, ..Basics, 
        ..PhotoIonization  ==#
 
 
-include("module-BascisAZ-inc-AG.jl")
-include("module-BascisAZ-inc-compute.jl")
-include("module-BascisAZ-inc-configurations.jl")
-include("module-BascisAZ-inc-generate.jl")
-include("module-BascisAZ-inc-HP.jl")
-include("module-BascisAZ-inc-perform.jl")
-include("module-BascisAZ-inc-QZ.jl")
+include("module-BasicsAZ-inc-AG.jl")
+include("module-BasicsAZ-inc-compute.jl")
+include("module-BasicsAZ-inc-configurations.jl")
+include("module-BasicsAZ-inc-generate.jl")
+include("module-BasicsAZ-inc-HP.jl")
+include("module-BasicsAZ-inc-perform.jl")
+include("module-BasicsAZ-inc-QZ.jl")
 
 end # module
