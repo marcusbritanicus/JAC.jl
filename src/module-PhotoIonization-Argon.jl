@@ -242,7 +242,7 @@ end
 function amplitude(kind::String, channel::PhotoIonization.Channel, omega::Float64, continuumLevel::Level, initialLevel::Level, grid::Radial.Grid)
     if      kind in [ "photoionization"]
     #-----------------------------------
-        amp = PhotoEmission.amplitude(Absorption(), channel.multipole, channel.gauge, omega, continuumLevel, initialLevel, grid,
+        amp = PhotoEmission.amplitude("absorption", channel.multipole, channel.gauge, omega, continuumLevel, initialLevel, grid,
                                         display=false, printout=false)
         l         = Basics.subshell_l(Subshell(101, channel.kappa))
         amplitude = (1.0im)^(-l) * exp( -im*channel.phase ) * amp
@@ -312,7 +312,7 @@ function computeDisplayNonE1AngleDifferentialCS(stream::IO, lines::Array{PhotoIo
         end
     end
 
-    g = open("DCS-Original.dat", "w")
+    g = open("DCS.dat", "w")
 
     println( g, TableStrings.hLine(94) )
     println( g, "i-level-f                theta            phi    Coulomb DCS      Babushkin DCS         Energy" )
