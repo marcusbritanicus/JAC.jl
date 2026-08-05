@@ -72,6 +72,41 @@ function Base.string(scheme::StimulatedRamanScheme)
     return( sa )
 end
 
+# ----------------------------------------------------------------------
+# New scheme for two-level two-colour ionization
+# ----------------------------------------------------------------------
+struct TwoLevelTwoColourScheme <: AbstractLiouvilleScheme
+    levelSelection   ::LevelSelection          # exactly two indices: ground and excited
+    levelNotations   ::Vector{String}          # labels for output
+    gamma1           ::Float64                 # ionization width Γ₁ (a.u.)
+    detuning         ::Float64                 # Δ₁ = (E₁ - E₀ - ω_ref) / ħ (a.u.)
+end
+
+# Convenience constructor
+# ----------------------------------------------------------------------
+# Keyword constructor for TwoLevelTwoColourScheme
+# ----------------------------------------------------------------------
+function TwoLevelTwoColourScheme(;
+    levelSelection::Union{LevelSelection,Vector{Int},Nothing}=nothing,
+    levelNotations::Union{Vector{String},Nothing}=nothing,
+    gamma1::Union{Float64,Nothing}=nothing,
+    detuning::Union{Float64,Nothing}=nothing
+)
+    # Convert levelSelection to LevelSelection if it's a vector
+    sel = if levelSelection === nothing
+        LevelSelection(false, Int[], LevelSymmetry[])
+    elseif levelSelection isa Vector{Int}
+        LevelSelection(false, levelSelection, LevelSymmetry[])
+    else
+        levelSelection
+    end
+
+    labels = levelNotations === nothing ? String[] : levelNotations
+    g1 = gamma1 === nothing ? 0.0 : gamma1
+    d = detuning === nothing ? 0.0 : detuning
+
+    return TwoLevelTwoColourScheme(sel, labels, g1, d)
+end
 
 # `Base.show(io::IO, scheme::StimulatedRamanScheme)`  ... prepares a proper printout of the scheme::StimulatedRamanScheme.
 function Base.show(io::IO, scheme::StimulatedRamanScheme)
@@ -81,6 +116,52 @@ function Base.show(io::IO, scheme::StimulatedRamanScheme)
     println(io, "gammaR:                  $(scheme.gammaR)  ")
     println(io, "gammaA:                  $(scheme.gammaA)  ")
     println(io, "calcPopulations:         $(scheme.calcPopulations)  ")
+end
+
+
+# Add this to module-Liouville-inc-TwoLevel.jl after the struct definition
+
+function Base.show(io::IO, scheme::TwoLevelTwoColourScheme)
+    println(io, "TwoLevelTwoColourScheme:")
+    println(io, "  levelSelection:    $(scheme.levelSelection)")
+    println(io, "  levelNotations:    $(scheme.levelNotations)")
+    println(io, "  gamma1 (Γ₁):       $(scheme.gamma1) a.u.")
+    println(io, "  detuning (Δ₁):     $(scheme.detuning) a.u.")
+
+    # Print some additional useful information if available
+    if !isempty(scheme.levelSelection.indices)
+        println(io, "  levels:")
+        for (i, idx) in enumerate(scheme.levelSelection.indices)
+            label = i <= length(scheme.levelNotations) ? scheme.levelNotations[i] : "level$(idx)"
+            println(io, "    $(i): index=$(idx), label=\"$(label)\"")
+        end
+    else
+        println(io, "  levels:           (not specified)")
+    end
+
+    # Check if it's a valid two-level scheme
+    if length(scheme.levelSelection.indices) != 2
+        println(io, "  Warning: Expected exactly 2 levels, got $(length(scheme.levelSelection.indices))")
+    end
+
+    # Print detuning in eV for convenience
+    if scheme.detuning != 0.0
+        detuning_eV = scheme.detuning * 27.2114  # Hartree to eV
+        println(io, "  detuning:          $(scheme.detuning) a.u. ($(detuning_eV) eV)")
+    end
+
+    # Print ionization width in eV for convenience
+    if scheme.gamma1 != 0.0
+        gamma_eV = scheme.gamma1 * 27.2114
+        println(io, "  gamma1 (Γ₁):       $(scheme.gamma1) a.u. ($(gamma_eV) eV)")
+    end
+
+    # Print lifetime if gamma1 > 0
+    if scheme.gamma1 > 0
+        lifetime_au = 1.0 / scheme.gamma1
+        lifetime_fs = lifetime_au * 0.0241888  # a.u. to femtoseconds
+        println(io, "  lifetime:          $(lifetime_au) a.u. ($(lifetime_fs) fs)")
+    end
 end
 
 
@@ -276,6 +357,35 @@ end
 
 include("module-Liouville-inc-stimulated-raman.jl")
 include("module-Liouville-inc-TwoColour.jl")
+include("module-Liouville-inc-TwoLevel.jl")
+
+# ----------------------------------------------------------------------
+# Generic matrix propagator for the density matrix (RK4)
+# ----------------------------------------------------------------------
+function propagateDensityMatrix(dρdt::Function, ρ0::Matrix{ComplexF64},
+                                tspan::Tuple{Float64,Float64}, dt::Float64)
+    t0, tf = tspan
+    nsteps = Int(ceil((tf - t0) / dt))
+    times = Vector{Float64}(undef, nsteps+1)
+    states = Vector{Matrix{ComplexF64}}(undef, nsteps+1)
+    times[1] = t0
+    states[1] = copy(ρ0)
+    ρ = copy(ρ0)
+    t = t0
+
+    for i in 1:nsteps
+        k1 = dρdt(ρ, t)
+        k2 = dρdt(ρ + 0.5*dt*k1, t + 0.5*dt)
+        k3 = dρdt(ρ + 0.5*dt*k2, t + 0.5*dt)
+        k4 = dρdt(ρ + dt*k3, t + dt)
+        ρ += dt/6 * (k1 + 2*k2 + 2*k3 + k4)
+        t += dt
+        times[i+1] = t
+        states[i+1] = copy(ρ)
+    end
+    return times, states
+end
+
 
 #######################################################################################################################
 #######################################################################################################################
@@ -297,5 +407,8 @@ function Basics.perform(comp::Liouville.Computation; output::Bool=false)
     Liouville.perform(comp.scheme, comp::Liouville.Computation, output=output)
 end
 
+function Basics.perform(scheme::TwoLevelTwoColourScheme, comp::Computation; output::Bool=true)
+    return Liouville.performTwoLevelTwoColour(scheme, comp, output=output)
+end
 
 end # module
