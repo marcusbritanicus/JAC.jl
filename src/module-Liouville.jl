@@ -358,6 +358,7 @@ end
 include("module-Liouville-inc-stimulated-raman.jl")
 include("module-Liouville-inc-TwoColour.jl")
 include("module-Liouville-inc-TwoLevel.jl")
+include("module-Liouville-inc-MResolved-TwoLevel.jl")
 
 # ----------------------------------------------------------------------
 # Generic matrix propagator for the density matrix (RK4)
