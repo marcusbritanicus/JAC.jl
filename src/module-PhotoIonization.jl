@@ -956,22 +956,23 @@ function  computeLines(finalMultiplet::Multiplet, initialMultiplet::Multiplet, n
     PhotoIonization.displayPhases(newLines)
     PhotoIonization.displayResults(stdout, newLines, settings)
     ## PhotoIonization.displayTimeDelay(stdout, newLines, settings)
-    if  printSummary   PhotoIonization.displayResults(iostream, newLines, settings)
-                        ## PhotoIonization.displayTimeDelay(iostream, newLines, settings)
+    if  printSummary
+        PhotoIonization.displayResults(iostream, newLines, settings)
+        # PhotoIonization.displayTimeDelay(iostream, newLines, settings)
     end
     #
     # Add printout about non-E1 angle-differential cross sections, if required
     if  settings.calcNonE1AngleDifferentialCS
-        PhotoIonization.computeDisplayNonE1AngleDifferentialCS(stdout, newLines, settings)
+        PhotoIonization.computeNonE1AngleDifferentialCS(stdout, newLines, settings)
     end
     #
     #
-    if    output    return( newLines )
-    else            return( nothing )
+    if    output
+        return( newLines )
+    else
+        return( nothing )
     end
 end
-
-
 
 """
 `PhotoIonization.computeLinesCascade(finalMultiplet::Multiplet, initialMultiplet::Multiplet, nm::Nuclear.Model, grid::Radial.Grid,

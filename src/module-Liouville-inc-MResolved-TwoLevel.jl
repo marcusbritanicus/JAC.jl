@@ -125,7 +125,7 @@ function computeMDipole(ground::Level, excited::Level, omega::Float64,
 
             if abs(threej) > 1e-15
                 phase = (-1.0)^(Float64(Je.num//Je.den) - Float64(Me))
-                D[j, i] = phase * sqrt(2*Float64(Je.num//Je.den) + 1) * d_red * threej
+                D[j, i] = phase * d_red * threej
             else
                 D[j, i] = 0.0 + 0.0im
             end
@@ -194,7 +194,8 @@ end
 # ----------------------------------------------------------------------
 # Compute M-resolved ionization rates using PhotoIonization
 # ----------------------------------------------------------------------
-function computeMIonizationRates(excited::Level, initialMultiplet::Multiplet,
+function computeMIonizationRates(excitedMultiplet::Multiplet,
+                                 finalMultiplet::Multiplet,
                                  nm::Nuclear.Model, grid::Radial.Grid,
                                  ionizingPulse::Pulse.AbstractPulse,
                                  piSettings::PhotoIonization.Settings)
@@ -203,26 +204,15 @@ function computeMIonizationRates(excited::Level, initialMultiplet::Multiplet,
     Uses PhotoIonization with proper mValue settings for each M sublevel.
     Returns a vector of length (2Je+1).
     """
-    Je = excited.J
+    Je = excitedMultiplet.levels[1].J
     nE = Int( 2 * Je.num // Je.den + 1 )
     gammaM = zeros(Float64, nE)
 
     # Get the ionizing photon energy
     omega_ion = ionizingPulse.omega
 
-    # Get the final multiplet (ion states)
-    # For photoionization, we need the final ion states
-    # We'll use the initial multiplet as the final states (after removing the electron)
-    # In a real implementation, this would be the ion multiplet
-    finalMultiplet = initialMultiplet  # Placeholder
-
     # Determine the polarization of the ionizing pulse
-    # For GaussianSimplified, we need to get the Stokes parameters
-    if typeof(ionizingPulse) == Pulse.GaussianSimplified
-        stokes = piSettings.stokes
-    else
-        stokes = ExpStokes()
-    end
+    stokes = piSettings.stokes
 
     # Loop over excited sublevels M
     Me_list = projections(Je)
@@ -245,44 +235,33 @@ function computeMIonizationRates(excited::Level, initialMultiplet::Multiplet,
         # Now compute the photoionization lines for this M
         # We need to compute lines between the excited level (initial)
         # and the ion levels (final)
-        try
-            lines = PhotoIonization.computeLines(
-                finalMultiplet,  # final states (ion)
-                initialMultiplet, # initial states (excited atom)
-                nm,
-                grid,
-                settingsM,
-                output=false
-            )
+        lines = PhotoIonization.computeLines(
+            finalMultiplet,  # final states (ion)
+            excitedMultiplet, # initial states (excited atom)
+            nm,
+            grid,
+            settingsM,
+            output=true
+        )
 
-            # Find the line corresponding to our excited level
-            total_sigma = 0.0
-            for line in lines
-                if line.initialLevel.index == excited.index
-                    # Sum cross sections for all final states
-                    total_sigma += line.crossSection.Coulomb
-                end
+        # Find the line corresponding to our excited level
+        total_sigma = 0.0
+        for line in lines
+            if line.initialLevel.index == excitedMultiplet.levels[1].index
+                # Sum cross sections for all final states
+                total_sigma += line.crossSection.Coulomb
             end
-
-            # Convert cross section to rate
-            # In atomic units: Γ = σ * J_photon, where J_photon = I / ω
-            # For a pulse, we use the peak intensity
-            if typeof(ionizingPulse) == Pulse.GaussianSimplified
-                # A0 is field amplitude, intensity = A0^2 / (8π α)
-                intensity = ionizingPulse.A0^2 / (8 * pi * Defaults.getDefaults("alpha"))
-                photon_flux = intensity / omega_ion
-                gammaM[idx] = total_sigma * photon_flux
-            else
-                # Fallback: use a reasonable estimate
-                gammaM[idx] = total_sigma * 1.0  # placeholder
-            end
-
-            println("    sigma = $(total_sigma), gamma = $(gammaM[idx])")
-
-        catch e
-            @warn "Failed to compute photoionization for M=$M: $e"
-            gammaM[idx] = 0.001  # fallback
         end
+
+        # Convert cross section to rate
+        # In atomic units: Γ = σ * J_photon, where J_photon = I / ω
+        # For a pulse, we use the peak intensity
+        # A0 is field amplitude, intensity = A0^2 / (8π α)
+        intensity = ionizingPulse.A0^2 / (8 * pi * Defaults.getDefaults("alpha"))
+        photon_flux = intensity / omega_ion
+        gammaM[idx] = total_sigma * photon_flux
+
+        println("    sigma = $(total_sigma), gamma = $(gammaM[idx])")
     end
 
     return gammaM
@@ -298,13 +277,23 @@ function buildMResolvedSystem(scheme::MResolvedTwoLevelScheme, comp::Computation
 
     # Compute the multiplet (SCF)
     println("\nRunning SCF to get atomic structure...")
-    multiplet = SelfConsistent.performSCF(comp.refConfigs, comp.nuclearModel, comp.grid, comp.asfSettings)
+    # multiplet = SelfConsistent.performSCF(comp.refConfigs[1:2], comp.nuclearModel, comp.grid, comp.asfSettings)
+
+    initialMultiplet = SelfConsistent.performSCF([comp.refConfigs[1]], comp.nuclearModel, comp.grid, comp.asfSettings)
+    excitedMultiplet = SelfConsistent.performSCF([comp.refConfigs[2]], comp.nuclearModel, comp.grid, comp.asfSettings)
+    finalMultiplet   = SelfConsistent.performSCF([comp.refConfigs[3]], comp.nuclearModel, comp.grid, comp.asfSettings)
 
     # Get ground and excited levels
-    idx_g = scheme.levelSelection.indices[1]
-    idx_e = scheme.levelSelection.indices[2]
-    ground = multiplet.levels[idx_g]
-    excited = multiplet.levels[idx_e]
+    # idx_g = scheme.levelSelection.indices[1]
+    # idx_e = scheme.levelSelection.indices[2]
+    # ground = multiplet.levels[idx_g]
+    # excited = multiplet.levels[idx_e]
+
+    ground  = initialMultiplet.levels[1]
+    excited = excitedMultiplet.levels[2]
+
+    println( "===============================================================> $ground" )
+    println( "===============================================================> $excited" )
 
     Jg = ground.J
     Je = excited.J
@@ -322,6 +311,7 @@ function buildMResolvedSystem(scheme::MResolvedTwoLevelScheme, comp::Computation
     if isempty(comp.pulses)
         error("At least one pulse required.")
     end
+
     p1 = comp.pulses[1]
     p1 = (typeof(p1) == Pulse.FelPulse) ? Pulse.convertPulse(p1) : p1
     omega_ref = p1.omega
@@ -377,14 +367,14 @@ function buildMResolvedSystem(scheme::MResolvedTwoLevelScheme, comp::Computation
             PhotoIonization.Settings(),
             multipoles                      = [Basics.E1, Basics.E2],
             gauges                          = [Basics.UseCoulomb, Basics.UseBabushkin],
-            electronEnergies                = [ionizingPulse.omega - (excited.energy - minimum([lvl.energy for lvl in multiplet.levels]))],
+            electronEnergies                = [ionizingPulse.omega - (excited.energy - minimum([lvl.energy for lvl in excitedMultiplet.levels]))],
             thetas                          = collect(0:π/6:2π),
             phis                            = collect(0:π/6:2π),
             mValue                          = 0.5,  # This will be overridden per M
-            calcAnisotropy                  = true,
+            calcAnisotropy                  = false,
             calcPartialCs                   = false,
             calcTimeDelay                   = false,
-            calcNonE1AngleDifferentialCS    = true,
+            calcNonE1AngleDifferentialCS    = false,
             calcTensors                     = false,
             printBefore                     = false,
             stokes                          = ExpStokes(),
@@ -393,17 +383,12 @@ function buildMResolvedSystem(scheme::MResolvedTwoLevelScheme, comp::Computation
         )
 
         # Compute gammaM using the PhotoIonization functions
-        gammaM = computeMIonizationRates(excited, multiplet, comp.nuclearModel,
-                                          comp.grid, ionizingPulse, piSettings)
+        gammaM = computeMIonizationRates(excitedMultiplet, finalMultiplet, comp.nuclearModel, comp.grid, ionizingPulse, piSettings)
+        println( "==============================================================> TWO PULSES GIVEN. CALCULATING IONISATION WIDTH FOR IONIZING PULSE.", gammaM )
     else
         # Only one pulse: use uniform gamma from scheme.gammaBase
-        gammaM = fill(scheme.gammaBase, nE)
-        println("  Only one pulse provided, using uniform gamma = $(scheme.gammaBase)")
-    end
-
-    println("\n  GammaM (M-resolved ionization rates):")
-    for (j, M) in enumerate(Me_list)
-        println("    M=$(Float64(M)): $(gammaM[j]) a.u.")
+        gammaM = computeMIonizationRates(excitedMultiplet, finalMultiplet, comp.nuclearModel, comp.grid, comp.pulses[1], piSettings)
+        println( "==============================================================> ONE PULSE GIVEN. CALCULATING IONISATION WIDTH FOR FIRST PULSE.", gammaM )
     end
 
     # Determine time step and max time
@@ -553,7 +538,7 @@ function mResolvedDensityMatrixDerivative(ρ::Matrix{ComplexF64}, t::Float64,
     # And coherence decay
     for j in 1:nE
         idxE = nG + j
-        gamma_j = sys.gammaM[j]
+        gamma_j = sys.gammaM[1]
 
         # Population decay of excited sublevel
         dρ[idxE, idxE] -= gamma_j * ρ[idxE, idxE]
@@ -562,7 +547,7 @@ function mResolvedDensityMatrixDerivative(ρ::Matrix{ComplexF64}, t::Float64,
         for k in 1:nE
             if j != k
                 idxE2 = nG + k
-                gamma_k = sys.gammaM[k]
+                gamma_k = sys.gammaM[1]
                 # Coherence decay rate = (γ_j + γ_k) / 2
                 dρ[idxE, idxE2] -= 0.5 * (gamma_j + gamma_k) * ρ[idxE, idxE2]
                 dρ[idxE2, idxE] -= 0.5 * (gamma_j + gamma_k) * ρ[idxE2, idxE]
