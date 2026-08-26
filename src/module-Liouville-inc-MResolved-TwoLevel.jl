@@ -12,7 +12,7 @@ export MResolvedTwoLevelScheme, performMResolvedTwoLevel
 # MResolvedTwoLevelScheme - user-facing scheme
 # ----------------------------------------------------------------------
 struct MResolvedTwoLevelScheme <: AbstractLiouvilleScheme
-    levelSelection   ::LevelSelection          # exactly two indices: ground and excited
+    levelSelection   ::LevelSelection          # exactly three indices: ground, excited and final
     levelNotations   ::Vector{String}          # labels for output
     gammaBase        ::Float64                 # Base ionization width (will be M-resolved)
     detuning         ::Float64                 # Δ₁ = (E₁ - E₀ - ω_ref) / ħ (a.u.)
@@ -191,9 +191,6 @@ end
 # ----------------------------------------------------------------------
 # Compute M-resolved ionization rates using PhotoIonization
 # ----------------------------------------------------------------------
-# ----------------------------------------------------------------------
-# Compute M-resolved ionization rates using PhotoIonization
-# ----------------------------------------------------------------------
 function computeMIonizationRates(excitedMultiplet::Multiplet,
                                  finalMultiplet::Multiplet,
                                  nm::Nuclear.Model, grid::Radial.Grid,
@@ -277,20 +274,13 @@ function buildMResolvedSystem(scheme::MResolvedTwoLevelScheme, comp::Computation
 
     # Compute the multiplet (SCF)
     println("\nRunning SCF to get atomic structure...")
-    # multiplet = SelfConsistent.performSCF(comp.refConfigs[1:2], comp.nuclearModel, comp.grid, comp.asfSettings)
 
     initialMultiplet = SelfConsistent.performSCF([comp.refConfigs[1]], comp.nuclearModel, comp.grid, comp.asfSettings)
     excitedMultiplet = SelfConsistent.performSCF([comp.refConfigs[2]], comp.nuclearModel, comp.grid, comp.asfSettings)
     finalMultiplet   = SelfConsistent.performSCF([comp.refConfigs[3]], comp.nuclearModel, comp.grid, comp.asfSettings)
 
-    # Get ground and excited levels
-    # idx_g = scheme.levelSelection.indices[1]
-    # idx_e = scheme.levelSelection.indices[2]
-    # ground = multiplet.levels[idx_g]
-    # excited = multiplet.levels[idx_e]
-
     ground  = initialMultiplet.levels[1]
-    excited = excitedMultiplet.levels[2]
+    excited = excitedMultiplet.levels[1]
 
     println( "===============================================================> $ground" )
     println( "===============================================================> $excited" )
@@ -400,6 +390,7 @@ function buildMResolvedSystem(scheme::MResolvedTwoLevelScheme, comp::Computation
             t_max = max(t_max, p_conv.timeDelay + 3*p_conv.fwhm)
         end
     end
+
     if t_max == 0.0
         # Estimate from Rabi frequency
         if typeof(p1) == Pulse.GaussianSimplified
