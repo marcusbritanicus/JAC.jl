@@ -19,7 +19,7 @@ using Printf, WignerSymbols, ..AngularMomentum, ..Basics, ..Continuum, ..Default
     + electronEnergies              ::Array{Float64,1}    ... List of electron energies; usually only one of these lists are utilized.
     + thetas                        ::Array{Float64,1}    ... List of theta-values if angle-differential CS are calculated explicitly.
     + phis                          ::Array{Float64,1}    ... List of phi-values if angle-differential CS are calculated explicitly.
-    + mValue                        ::Float64             ... List of m-values for which all the calculations have to be performed.
+    + mValues                       ::NTuple{2, Float64}  ... Two m-values, M₀ and Mα for which all the calculations have to be performed or Nothing
     + calcAnisotropy                ::Bool                ... True, if the beta anisotropy parameters are to be calculated and false otherwise (o/w).
     + calcPartialCs                 ::Bool                ... True, if partial cross sections are to be calculated and false otherwise.
     + calcTimeDelay                 ::Bool                ... True, if time-delays are to be calculated and false otherwise.
@@ -38,7 +38,7 @@ struct Settings  <:  AbstractProcessSettings
     electronEnergies                ::Array{Float64,1}
     thetas                          ::Array{Float64,1}
     phis                            ::Array{Float64,1}
-    mValue                          ::Float64
+    mValues                         ::Union{Nothing,NTuple{2, Float64}}
     calcAnisotropy                  ::Bool
     calcPartialCs                   ::Bool
     calcTimeDelay                   ::Bool
@@ -55,7 +55,7 @@ end
 `PhotoIonization.Settings()`  ... constructor for the default values of photoionization line computations
 """
 function Settings()
-    Settings(Basics.EmMultipole[E1], Basics.UseGauge[Basics.UseCoulomb, Basics.UseBabushkin], Float64[], Float64[], Float64[], Float64[], NaN,
+    Settings(Basics.EmMultipole[E1], Basics.UseGauge[Basics.UseCoulomb, Basics.UseBabushkin], Float64[], Float64[], Float64[], Float64[], nothing,
                 false, false, false, false, false, false, LineSelection(), Basics.ExpStokes(), 0., [0,1,2,3,4,5])
 end
 
@@ -74,7 +74,7 @@ function Settings(set::PhotoIonization.Settings;
     multipoles::Union{Nothing,Array{EmMultipole,1}}=nothing,         gauges::Union{Nothing,Array{UseGauge,1}}=nothing,
     photonEnergies::Union{Nothing,Array{Float64,1}}=nothing,         electronEnergies::Union{Nothing,Array{Float64,1}}=nothing,
     thetas::Union{Nothing,Array{Float64,1}}=nothing,                 phis::Union{Nothing,Array{Float64,1}}=nothing,
-    mValue ::Union{Nothing,Float64}=nothing,                         calcAnisotropy::Union{Nothing,Bool}=nothing,
+    mValues::Union{Nothing, NTuple{2, Float64}}=nothing,             calcAnisotropy::Union{Nothing,Bool}=nothing,
     calcPartialCs::Union{Nothing,Bool}=nothing,                      calcTimeDelay::Union{Nothing,Bool}=nothing,
     calcNonE1AngleDifferentialCS::Union{Nothing,Bool}=nothing,       calcTensors::Union{Nothing,Bool}=nothing,
     printBefore::Union{Nothing,Bool}=nothing,                        lineSelection::Union{Nothing,LineSelection}=nothing,
@@ -88,11 +88,11 @@ function Settings(set::PhotoIonization.Settings;
     if  electronEnergies  == nothing   electronEnergiesx  = set.electronEnergies  else  electronEnergiesx  = electronEnergies   end
     if  thetas            == nothing   thetasx            = set.thetas            else  thetasx            = thetas             end
     if  phis              == nothing   phisx              = set.phis              else  phisx              = phis               end
-    if  mValue            == nothing   mValuex            = set.mValue            else  mValuex            = mValue             end
+    if  mValues           == nothing   mValuesx           = set.mValues           else  mValuesx           = mValues            end
     if  calcAnisotropy    == nothing   calcAnisotropyx    = set.calcAnisotropy    else  calcAnisotropyx    = calcAnisotropy     end
     if  calcPartialCs     == nothing   calcPartialCsx     = set.calcPartialCs     else  calcPartialCsx     = calcPartialCs      end
     if  calcTimeDelay     == nothing   calcTimeDelayx     = set.calcTimeDelay     else  calcTimeDelayx     = calcTimeDelay      end
-    if  calcNonE1AngleDifferentialCS   == nothing   calcNonE1AngleDifferentialCSx = set.calcNonE1AngleDifferentialCS        else
+    if  calcNonE1AngleDifferentialCS   == nothing   calcNonE1AngleDifferentialCSx = set.calcNonE1AngleDifferentialCS           else
         calcNonE1AngleDifferentialCSx  = calcNonE1AngleDifferentialCS                                                           end
     if  calcTensors       == nothing   calcTensorsx       = set.calcTensors       else  calcTensorsx       = calcTensors        end
     if  printBefore       == nothing   printBeforex       = set.printBefore       else  printBeforex       = printBefore        end
@@ -101,7 +101,7 @@ function Settings(set::PhotoIonization.Settings;
     if  freeElectronShift == nothing   freeElectronShiftx = set.freeElectronShift else  freeElectronShiftx = freeElectronShift  end
     if  lValues           == nothing   lValuesx           = set.lValues           else  lValuesx           = lValues            end
 
-    Settings( multipolesx, gaugesx, photonEnergiesx, electronEnergiesx, thetasx, phisx, mValuex, calcAnisotropyx, calcPartialCsx,
+    Settings( multipolesx, gaugesx, photonEnergiesx, electronEnergiesx, thetasx, phisx, mValuesx, calcAnisotropyx, calcPartialCsx,
                 calcTimeDelayx, calcNonE1AngleDifferentialCSx, calcTensorsx, printBeforex, lineSelectionx, stokesx,
                 freeElectronShiftx, lValuesx)
 end
@@ -115,7 +115,7 @@ function Base.show(io::IO, settings::PhotoIonization.Settings)
     println(io, "electronEnergies:              $(settings.electronEnergies)  ")
     println(io, "thetas:                        $(settings.thetas)  ")
     println(io, "phis:                          $(settings.phis)  ")
-    println(io, "mValue:                        $(settings.mValue)  ")
+    println(io, "mValues:                       $(settings.mValues)  ")
     println(io, "calcAnisotropy:                $(settings.calcAnisotropy)  ")
     println(io, "calcPartialCs:                 $(settings.calcPartialCs)  ")
     println(io, "calcTimeDelay:                 $(settings.calcTimeDelay)  ")
@@ -295,38 +295,48 @@ end
         are fulfilled. A wa::Float64 is returned.
 """
 function angularFunctionK(L1::Int64, L2::Int64, X::Int64, Ji::AngularJ64, Jf::AngularJ64,
-                          kappa1::Int64, J1::AngularJ64, kappa2::Int64, J2::AngularJ64, gamma::Int64, mValue::Float64)
-    s1 = Subshell(20,kappa1);   j1 = Basics.subshell_j(s1)
-    s2 = Subshell(20,kappa2);   j2 = Basics.subshell_j(s2)
-    wb = (2L1+1) * (Basics.twice(j1)+1) * (Basics.twice(J1)+1) * (2L2+1) * (Basics.twice(j2)+1) * (Basics.twice(J2)+1)
+                          kappa1::Int64, J1::AngularJ64, kappa2::Int64, J2::AngularJ64,
+                          gamma::Int64,
+                          mValues::Union{Nothing, NTuple{2, Float64}})   # ← signature
+
+    s1 = Subshell(20, kappa1);   j1 = Basics.subshell_j(s1)
+    s2 = Subshell(20, kappa2);   j2 = Basics.subshell_j(s2)
+    wb = (2L1+1) * (Basics.twice(j1)+1) * (Basics.twice(J1)+1) *
+         (2L2+1) * (Basics.twice(j2)+1) * (Basics.twice(J2)+1)
     wa = (2X+1) * sqrt(wb) * AngularMomentum.phaseFactor([Ji, -1, Jf, 1, AngularJ64(1//2)])
 
-    J_val = Float64(J1)
-    J_p = Float64(J2)
-    ℓ = X
-    J₀ = Float64(Ji)
-    Jα = Float64(Jf)
+    J_val  = Float64(J1)
+    J_p    = Float64(J2)
+    ℓ      = X
+    J₀     = Float64(Ji)
+    Jα     = Float64(Jf)
     jα_val = Float64(j1)
-    jα_p = Float64(j2)
-    j_val = L1
-    j_p = L2
+    jα_p   = Float64(j2)
+    j_val  = L1
+    j_p    = L2
+
+    # ------------------------------------------------------------------
+    # Decide the Mα and M₀ ranges once, before the loops.
+    #   mValues === nothing  →  sum over all M (full range)
+    #   mValues === (Mα, M₀) →  restrict to that single M value each
+    # ------------------------------------------------------------------
+    Mα_range = mValues === nothing ? (-Jα:Jα) : (mValues[1]:mValues[1])
+    M₀_range = mValues === nothing ? (-J₀:J₀) : (mValues[2]:mValues[2])
 
     Edmonds_sum = 0.0
 
     for M in -J_val:J_val
         for M_dprime in -J_p:J_p
-            #The above loop is to satisfy the orthogonality condition
             Edmonds_sum1 = 0.0
             Edmonds_sum2 = 0.0
 
             # --- Ion+photoelectron Channels ---
-            # -- The loop below is to satisfy edmods eq 6.2.8
-            for Mα in -Jα:Jα
+            for Mα in Mα_range                      # ← was -Jα:Jα
                 for mα in -jα_val:jα_val
                     for mα_prime in -jα_p:jα_p
 
                         exp0 = jα_val + jα_p + Jα + mα + mα_prime + Mα
-                        Edmonds_Term0 = (-1)^(round(Int, exp0 ))
+                        Edmonds_Term0 = (-1)^(round(Int, exp0))
 
                         Edmonds_Term1 = AngularMomentum.Wigner_3j(J_p, jα_p, Jα, M_dprime, mα_prime, -Mα)
                         Edmonds_Term2 = AngularMomentum.Wigner_3j(jα_val, J_val, Jα, -mα, M, Mα)
@@ -338,14 +348,12 @@ function angularFunctionK(L1::Int64, L2::Int64, X::Int64, Ji::AngularJ64, Jf::An
             end
 
             # --- photon+atom Channels ---
-            # -- The loop below is to satisfy edmods eq 6.2.8
-            for M₀ in -J₀:J₀
+            for M₀ in M₀_range                      # ← was -J₀:J₀
                 for m in -j_val:j_val
                     for m_prime in -j_p:j_p
 
                         exp02 = j_val + j_p + J₀ + m + m_prime + M₀
-
-                        Edmonds_Term02 = (-1)^(round(Int, exp02 ) )
+                        Edmonds_Term02 = (-1)^(round(Int, exp02))
 
                         Edmonds_Term12 = AngularMomentum.Wigner_3j(J_p, j_p, J₀, M_dprime, m_prime, -M₀)
                         Edmonds_Term22 = AngularMomentum.Wigner_3j(j_val, J_val, J₀, -m, M, M₀)
@@ -441,6 +449,14 @@ function computeNonE1AngleDifferentialCS(stream::IO, lines::Array{PhotoIonizatio
 
         angCsCoeff =  2. * pi^3 * 137.03599 / ( line.photonEnergy * ( Basics.twice(line.initialLevel.J) + 1 ) )
 
+        if 0.0 ∉ settings.thetas
+            pushfirst!( settings.thetas, 0.0 )
+        end
+
+        if 0.0 ∉ settings.phis
+            pushfirst!( settings.phis, 0.0 )
+        end
+
         # Loop over all angles theta, phi
         for theta in settings.thetas, phi in settings.phis
             csCoulomb = 1.;   csBabushkin = 1.
@@ -488,7 +504,7 @@ function computeNonE1AngleDifferentialCS(stream::IO, lines::Array{PhotoIonizatio
                                 cha.multipole.L, chb.multipole.L, X,
                                 line.initialLevel.J, line.finalLevel.J,
                                 cha.kappa, cha.symmetry.J, chb.kappa, chb.symmetry.J,
-                                lambda2 - lambda1, settings.mValue)
+                                lambda2 - lambda1, settings.mValues)
 
                             W = 0
                             for mu in -1//2:1//2
@@ -537,6 +553,7 @@ function computeNonE1AngleDifferentialCS(stream::IO, lines::Array{PhotoIonizatio
                     EmProperty(0.),   # Lambda4
                     EmProperty(0.)    # Upsilon
                 ]
+
                 for (key, value) in angCsParams
                     if key[1] == 1 && key[2] == 1 && key[3] == 2 && key[4] && key[5]
                         angularParams[line.photonEnergy][1] = EmProperty( value[1].re * -2., value[2].re * -2. )
@@ -570,11 +587,11 @@ function computeNonE1AngleDifferentialCS(stream::IO, lines::Array{PhotoIonizatio
             end
 
             print( g, TableStrings.flushleft( 15, "$(line.initialLevel.J) -- $(line.finalLevel.J)" ) )
-            @printf( g, "%15.5f",   theta )
-            @printf( g, "%15.5f",   phi )
-            @printf( g, "%15.5e    ",   csCoulomb.re * angCsCoeff )
-            @printf( g, "%15.5e",   csBabushkin.re * angCsCoeff )
-            @printf( g, "%15.8e\n", line.photonEnergy * 27.2114079527 )
+            @printf( g, "%15.5f",     theta )
+            @printf( g, "%15.5f",     phi )
+            @printf( g, "%15.5e    ", csCoulomb.re * angCsCoeff )
+            @printf( g, "%15.5e",     csBabushkin.re * angCsCoeff )
+            @printf( g, "%15.8e\n",   line.photonEnergy * 27.2114079527 )
         end
 
         println( g, "\n" )
@@ -939,11 +956,14 @@ function  computeLines(finalMultiplet::Multiplet, initialMultiplet::Multiplet, n
     printstyled("------------------------------------------------------------------------------------------------- \n", color=:light_green)
     println("")
     lines = PhotoIonization.determineLines(finalMultiplet, initialMultiplet, settings)
+
     # Display all selected lines before the computations start
     if  settings.printBefore    PhotoIonization.displayLines(stdout, lines)    end
+
     # Determine maximum energy and check for consistency of the grid
     maxEnergy = 0.;   for  line in lines   maxEnergy = max(maxEnergy, line.electronEnergy)   end
     nrContinuum = Continuum.gridConsistency(maxEnergy, grid)
+
     # Calculate all amplitudes and requested properties
     newLines = PhotoIonization.Line[]
     for  line in lines
@@ -952,27 +972,30 @@ function  computeLines(finalMultiplet::Multiplet, initialMultiplet::Multiplet, n
         newLine = PhotoIonization.computeAmplitudesProperties(line, nm, grid, nrContinuum, settings)
         push!( newLines, newLine)
     end
+
     # Print all results to screen
     PhotoIonization.displayPhases(newLines)
     PhotoIonization.displayResults(stdout, newLines, settings)
+
     ## PhotoIonization.displayTimeDelay(stdout, newLines, settings)
     if  printSummary
         PhotoIonization.displayResults(iostream, newLines, settings)
         # PhotoIonization.displayTimeDelay(iostream, newLines, settings)
     end
-    #
+
     # Add printout about non-E1 angle-differential cross sections, if required
     if  settings.calcNonE1AngleDifferentialCS
         PhotoIonization.computeNonE1AngleDifferentialCS(stdout, newLines, settings)
     end
-    #
-    #
-    if    output
+
+    if output
         return( newLines )
     else
-        return( nothing )
+        return nothing
     end
 end
+
+
 
 """
 `PhotoIonization.computeLinesCascade(finalMultiplet::Multiplet, initialMultiplet::Multiplet, nm::Nuclear.Model, grid::Radial.Grid,
@@ -1855,6 +1878,59 @@ function getLineKappas(line::PhotoIonization.Line)
     end
 
     return( kappaList )
+end
+
+
+"""
+    computeCrossSectionForMi(Mi::AngularM64, q::Int64, gauge::EmGauge, line::PhotoIonization.Line)
+
+Photoionization cross section resolved in the INITIAL atomic sublevel Mi, for
+an ionizing field of definite spherical component q (-1, 0, +1 -- not a Stokes
+average). Built directly from Wigner-Eckart in the pointwise form confirmed
+against Edmonds (5.4.1): no summation, no extra (2J+1) factor -- that belongs
+to the *other* (inversion-by-orthogonality) relation, Edmonds (5.4.2), which
+does not apply to a single unsummed term.
+
+M = Mi + q is fixed by angular-momentum conservation, not a free parameter.
+The reduced matrix element <(Jf,kappa)J||T^1||Ji> is identified with
+cha.amplitude -- the same identification already used, and tested, for the
+Mi-averaged total cross section (sigmaBarC / angCsCoeff at line ~442).
+
+Different (kappa,J) channels don't interfere once Mf, electron spin and
+electron angle are fully summed/integrated, so this is a plain incoherent
+sum of |Wigner3j * amplitude|^2 over channels -- no Racahexpr.
+"""
+function computeCrossSectionForMi(Mi::AngularM64, q::Int64, gauge::EmGauge, line::PhotoIonization.Line)
+    Ji = line.initialLevel.J
+
+    (q < -1 || q > 1)  &&  error("q must be -1, 0, or +1 (dipole approximation).")
+
+    Mtot2 = Basics.twice(Mi) + 2*q                  # 2*(Mi+q), kept as an Int to stay exact
+    Mtot  = AngularM64(Mtot2 // 2)                  # M = Mi + q, fixed by conservation
+
+    kappaList = PhotoIonization.getLineKappas(line)
+    wa = 0.0
+
+    for kappa in kappaList
+        for cha in line.channels
+            (kappa != cha.kappa  ||  cha.gauge != gauge)        &&  continue
+
+            L = cha.multipole.L
+            J = cha.symmetry.J
+            AngularMomentum.isTriangle(Ji, AngularJ64(1), J)    ||  continue
+
+            threeJ = AngularMomentum.Wigner_3j(Ji, L, J, Mi, AngularM64(q), -Mtot)
+            threeJ == 0.0   &&   continue
+
+            phaseExp = Int( ( - Basics.twice(Ji) + Basics.twice(L) - Mtot2 ) ÷ 2 )   # -Ji - j_{\gamma} + M_t, always integer
+            amp = (-1.0)^phaseExp * threeJ * cha.amplitude
+
+            wa += abs2(amp)                          # incoherent: no cross terms between channels
+        end
+    end
+
+    csFactor = 2.0 * pi^3 * 137.03599 / line.photonEnergy   # angCsCoeff (line 442) WITHOUT the 1/(2Ji+1)
+    return csFactor * wa
 end
 
 end # module
