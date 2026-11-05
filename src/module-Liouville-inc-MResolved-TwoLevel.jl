@@ -1,44 +1,78 @@
-# module-Liouville-inc-MResolved-TwoLevel.jl
-# Implements M-resolved two-level two-colour Liouville evolution.
-# Uses PhotoIonization's existing M-resolved functions for computing gammaM.
+# module-Liouville-inc-MResolved-MultiLevel.jl
+# Implements M-resolved multi-level multi-photon Liouville evolution.
+# Sequential absorption through arbitrary number of intermediate states.
+#
+# Physics: XUV excites ground → excited state. NIR photons drive a ladder
+#          through intermediate Rydberg states until ionization from the highest.
+#
+# Basis: { |g⟩, |e⟩, |r₁⟩, |r₂⟩, ..., |rₙ⟩ }
+#        where |rₙ⟩ is the highest state that ionizes.
 
 using ..Basics, ..Defaults, ..Pulse, ..PhotoExcitation, ..PhotoIonization
-using ..SelfConsistent, ..Radial, ..Nuclear
+using ..SelfConsistent, ..Radial, ..Nuclear, ..ManyElectron, ..AngularMomentum
 using LinearAlgebra, DelimitedFiles, Printf
 
-export MResolvedTwoLevelScheme, performMResolvedTwoLevel
+export MResolvedMultiLevelScheme, performMResolvedMultiLevel, levelLabel
 
 # ----------------------------------------------------------------------
-# MResolvedTwoLevelScheme - user-facing scheme
+# MResolvedMultiLevelScheme - User-facing scheme
 # ----------------------------------------------------------------------
-struct MResolvedTwoLevelScheme <: AbstractLiouvilleScheme
-    levelSelection   ::LevelSelection          # exactly two indices: ground and excited
-    levelNotations   ::Vector{String}          # labels for output
-    gammaBase        ::Float64                 # Base ionization width (will be M-resolved)
-    detuning         ::Float64                 # Δ₁ = (E₁ - E₀ - ω_ref) / ħ (a.u.)
-    includeCoherences::Bool                    # Whether to track M-M' coherences
+struct MResolvedMultiLevelScheme <: AbstractLiouvilleScheme
+    levelSelection   ::LevelSelection
+    levelNotations   ::Vector{String}
+    gammaIon         ::Float64
+    detunings        ::Vector{Float64}
+    includeCoherences::Bool
+    autoDetune       ::Bool
 end
 
-# Convenience constructors
-function MResolvedTwoLevelScheme(indices::Vector{Int}, labels::Vector{String}, gammaBase::Float64;
-                                  detuning::Float64=0.0, includeCoherences::Bool=true)
-    return MResolvedTwoLevelScheme(LevelSelection(false, indices, LevelSymmetry[]),
-                                   labels, gammaBase, detuning, includeCoherences)
+function MResolvedMultiLevelScheme(indices::Vector{Int}, labels::Vector{String},
+                                    gammaIon::Float64;
+                                    detunings::Vector{Float64}=Float64[],
+                                    includeCoherences::Bool=true,
+                                    autoDetune::Bool=true)
+    n_real_levels = length(indices) - 1
+    n_transitions = n_real_levels - 1
+    if !isempty(detunings) && length(detunings) != n_transitions
+        @warn "Number of detunings ($(length(detunings))) does not match number of transitions ($n_transitions). Using autoDetune."
+        detunings = Float64[]
+    end
+
+    return MResolvedMultiLevelScheme(
+        LevelSelection(false, indices, LevelSymmetry[]),
+        labels,
+        gammaIon,
+        detunings,
+        includeCoherences,
+        autoDetune
+    )
 end
 
-function MResolvedTwoLevelScheme()
-    return MResolvedTwoLevelScheme(LevelSelection(false, Int[], LevelSymmetry[]),
-                                   String[], 0.0, 0.0, true)
+function MResolvedMultiLevelScheme()
+    return MResolvedMultiLevelScheme(
+        LevelSelection(false, Int[], LevelSymmetry[]),
+        String[],
+        0.0,
+        Float64[],
+        true,
+        true
+    )
 end
 
-function Base.show(io::IO, scheme::MResolvedTwoLevelScheme)
-    println(io, "MResolvedTwoLevelScheme:")
+function Base.show(io::IO, scheme::MResolvedMultiLevelScheme)
+    println(io, "MResolvedMultiLevelScheme:")
     println(io, "  levelSelection:    $(scheme.levelSelection)")
     println(io, "  levelNotations:    $(scheme.levelNotations)")
-    println(io, "  gammaBase:         $(scheme.gammaBase) a.u.")
-    println(io, "  detuning:          $(scheme.detuning) a.u.")
+    println(io, "  gammaIon:          $(scheme.gammaIon) a.u.")
     println(io, "  includeCoherences: $(scheme.includeCoherences)")
+    println(io, "  autoDetune:        $(scheme.autoDetune)")
+    if !isempty(scheme.detunings)
+        println(io, "  detunings:         $(scheme.detunings)")
+    else
+        println(io, "  detunings:         (auto-calculated)")
+    end
     if !isempty(scheme.levelSelection.indices)
+        println(io, "  levels:")
         for (i, idx) in enumerate(scheme.levelSelection.indices)
             label = i <= length(scheme.levelNotations) ? scheme.levelNotations[i] : "level$(idx)"
             println(io, "    level $i: index=$(idx), label=\"$(label)\"")
@@ -47,85 +81,127 @@ function Base.show(io::IO, scheme::MResolvedTwoLevelScheme)
 end
 
 # ----------------------------------------------------------------------
-# MResolvedSystem - internal system struct
+# MResolvedMultiLevelSystem   (+ piLines field)
 # ----------------------------------------------------------------------
-struct MResolvedSystem
-    ground::Level
-    excited::Level
-    groundJ::AngularJ64
-    excitedJ::AngularJ64
-    nGround::Int                           # 2*Jg + 1
-    nExcited::Int                          # 2*Je + 1
-    totalDim::Int                          # nGround + nExcited
-    dipole::Matrix{ComplexF64}             # dipole matrix elements (nE × nG)
-    gammaM::Vector{Float64}                # M-resolved ionization rates [nE]
-    delta::Float64                         # detuning
-    pulses::Vector{Pulse.AbstractPulse}    # [pump, ionizing]
+struct MResolvedMultiLevelSystem
+    levels::Vector{Level}
+    levelConfigs::Vector{Configuration}
+    levelNotations::Vector{String}
+    J_values::Vector{AngularJ64}
+    n_sublevels::Vector{Int}
+    totalDim::Int
+
+    dipoles::Vector{Matrix{ComplexF64}}
+
+    gammaIon::Vector{Float64}
+    piLines ::Vector{PhotoIonization.Line}        # ← ADDED: amplitudes for PAD
+
+    deltas::Vector{Float64}
+
+    pulses::Vector{Pulse.AbstractPulse}
     omega_ref::Float64
+
     dt::Float64
     t_max::Float64
-    groundIndices::Dict{AngularM64, Int}   # M -> global index
-    excitedIndices::Dict{AngularM64, Int}  # M -> global index
-    # For mapping back: global index -> (level, M)
-    indexToLevel::Vector{Int}              # 1=ground, 2=excited
-    indexToM::Vector{AngularM64}           # M value
+
+    levelIndices::Vector{Dict{AngularM64, Int}}
+    indexToLevel::Vector{Int}
+    indexToM::Vector{AngularM64}
+    levelStart::Vector{Int}
 end
 
 # ----------------------------------------------------------------------
-# Helper: get projections (magnetic sublevels) for a given J
+# Helper functions
 # ----------------------------------------------------------------------
 function projections(J::AngularJ64)
     j = Float64(J.num) / Float64(J.den)
     m_vals = -j:1.0:j
-    # Convert to Rational{Int64} using rationalize
     return [rationalize(m) for m in m_vals]
 end
-# ----------------------------------------------------------------------
-# Helper: determine polarization component q from a pulse
-# ----------------------------------------------------------------------
+
 function getPolarizationComponent(pulse::Pulse.AbstractPulse)
-    # For GaussianSimplified, we need to infer from Stokes or just use q=+1
-    # In a full implementation, this would come from the pulse's polarization
-    # For now, assume circular polarization with q=+1 (right circular)
     return 1
 end
 
+function levelLabel(sys::MResolvedMultiLevelSystem, level_i::Int)
+    if level_i <= length(sys.levelNotations) && !isempty(sys.levelNotations[level_i])
+        return sys.levelNotations[level_i]
+    elseif level_i <= length(sys.levelConfigs)
+        return string(sys.levelConfigs[level_i])
+    else
+        return "level_$(level_i)"
+    end
+end
+
 # ----------------------------------------------------------------------
-# Compute M-resolved dipole matrix elements
+# computeReducedDipole  (unchanged)
 # ----------------------------------------------------------------------
-function computeMDipole(ground::Level, excited::Level, omega::Float64,
+function computeReducedDipole(initial::Level, final::Level, omega::Float64,
+                              grid::Radial.Grid, q::Int, stokes::ExpStokes)
+    settings = PhotoExcitation.Settings([Basics.E1], [Basics.UseCoulomb],
+                                        false, false, false, false,
+                                        Basics.LineSelection(), 0.0, 0.0, 1e6,
+                                        stokes)
+    channels = PhotoExcitation.determineChannels(final, initial, settings)
+    if isempty(channels)
+        @warn "No E1 channel found for this transition."
+        return 0.0 + 0.0im
+    end
+    line = PhotoExcitation.Line(initial, final, omega,
+                                Basics.EmProperty(0., 0.), Basics.EmProperty(0., 0.),
+                                Basics.TensorComp[], true, channels)
+    computed = PhotoExcitation.computeAmplitudesProperties(line, grid, settings,
+                                                            printout=false)
+
+    f_coul = computed.oscStrength.Coulomb
+    if abs(f_coul) < 1e-15
+        @warn "Oscillator strength is zero or very small: $f_coul"
+        return 0.0 + 0.0im
+    end
+
+    Jg = initial.J
+    Jg_num = Basics.twice(Jg)
+    d_red_sq = 3 * (Jg_num + 1) / (2 * omega) * abs(f_coul)
+    d_red = sqrt(d_red_sq)
+
+    amp = 0.0 + 0.0im
+    for ch in computed.channels
+        if ch.gauge == Basics.Coulomb
+            amp = ch.amplitude
+            break
+        end
+    end
+    if abs(amp) < 1e-15
+        return d_red + 0.0im
+    end
+
+    return d_red * (amp / abs(amp))
+end
+
+# ----------------------------------------------------------------------
+# computeMDipole  (unchanged)
+# ----------------------------------------------------------------------
+function computeMDipole(initial::Level, final::Level, omega::Float64,
                         grid::Radial.Grid, q::Int, stokes::ExpStokes)
-    """
-    Compute dipole matrix elements <J_e M_e | d_q | J_g M_g> for all M_g, M_e.
-    Returns a matrix of size (2Je+1) × (2Jg+1).
-    """
-    # Get reduced matrix element from PhotoExcitation
-    # Use the existing computeDipole function from the two-level module
-    d_red = computeReducedDipole(ground, excited, omega, grid, q, stokes)
+    d_red = computeReducedDipole(initial, final, omega, grid, q, stokes)
 
-    Jg = ground.J
-    Je = excited.J
+    Ji = initial.J
+    Jf = final.J
 
-    nG = Int( 2 * Jg.num //Jg.den + 1 )
-    nE = Int( 2 * Je.num //Je.den + 1 )
-    D = zeros(ComplexF64, nE, nG)
+    n_i = Int(2 * Ji.num // Ji.den + 1)
+    n_f = Int(2 * Jf.num // Jf.den + 1)
+    D = zeros(ComplexF64, n_f, n_i)
 
-    # Get projections
-    Mg_list = projections(Jg)
-    Me_list = projections(Je)
+    Mi_list = projections(Ji)
+    Mf_list = projections(Jf)
 
-    # Loop over magnetic sublevels
-    for (i, Mg) in enumerate(Mg_list)
-        for (j, Me) in enumerate(Me_list)
-            # Wigner-Eckart theorem:
-            # <Je Me | d_q | Jg Mg> = (-1)^{Je-Me} * (Je 1 Jg; -Me q Mg) * <Je || d || Jg>
-            # where d_red = <Je || d || Jg> / sqrt(2Je+1)
-            # So: <Je Me | d_q | Jg Mg> = (-1)^{Je-Me} * sqrt(2Je+1) * (Je 1 Jg; -Me q Mg) * d_red
-            threej = wigner3j(Je.num//Je.den, 1, Jg.num//Jg.den, -Me, q, Mg)
-
+    for (i, Mi) in enumerate(Mi_list)
+        for (j, Mf) in enumerate(Mf_list)
+            threej = wigner3j(Jf.num // Jf.den, 1, Ji.num // Ji.den,
+                              -Mf, q, Mi)
             if abs(threej) > 1e-15
-                phase = (-1.0)^(Float64(Je.num//Je.den) - Float64(Me))
-                D[j, i] = phase * sqrt(2*Float64(Je.num//Je.den) + 1) * d_red * threej
+                phase = (-1.0)^(Float64(Jf.num // Jf.den) - Float64(Mf))
+                D[j, i] = phase * d_red * threej
             else
                 D[j, i] = 0.0 + 0.0im
             end
@@ -136,395 +212,561 @@ function computeMDipole(ground::Level, excited::Level, omega::Float64,
 end
 
 # ----------------------------------------------------------------------
-# Compute reduced dipole from PhotoExcitation
+# computeMIonizationRates   (CHANGED: now returns (gammaM, collectedLines))
+#   Physics loop is unchanged — per-M mValue, per-M sigma, per-M gamma.
+#   Only addition: collect the line list once (amplitudes are M-independent).
 # ----------------------------------------------------------------------
-function computeReducedDipole(initial::Level, final::Level, omega::Float64,
-                              grid::Radial.Grid, q::Int, stokes::ExpStokes)
-    """
-    Computes the reduced dipole matrix element <final || d || initial> / sqrt(2Jf+1).
-    Uses PhotoExcitation to get oscillator strength.
-    """
-    settings = PhotoExcitation.Settings([Basics.E1], [Basics.UseCoulomb],
-                                        false, false, false, false,
-                                        Basics.LineSelection(), 0.0, 0.0, 1e6,
-                                        stokes)
-    channels = PhotoExcitation.determineChannels(final, initial, settings)
-    if isempty(channels)
-        error("No E1 channel found for this transition.")
-    end
-    line = PhotoExcitation.Line(initial, final, omega,
-                                Basics.EmProperty(0.,0.), Basics.EmProperty(0.,0.),
-                                Basics.TensorComp[], true, channels)
-    computed = PhotoExcitation.computeAmplitudesProperties(line, grid, settings,
-                                                            printout=false)
-
-    # Extract oscillator strength
-    f_coul = computed.oscStrength.Coulomb
-    if f_coul < 1e-15
-        @warn "Oscillator strength is zero or very small: $f_coul"
-        return 0.0 + 0.0im
-    end
-
-    # For J_ground = J_g, the reduced matrix element squared is:
-    # |<Jf || d || Jg>|^2 = 3*(2Jg+1)/(2*omega) * f
-    Jg = initial.J
-    Jg_num = Basics.twice(Jg)  # 2Jg
-    d_red_sq = 3 * (Jg_num + 1) / (2 * omega) * f_coul
-    d_red = sqrt(d_red_sq)
-
-    # Get phase from amplitude
-    amp = 0.0 + 0.0im
-    for ch in computed.channels
-        if ch.gauge == Basics.Coulomb
-            amp = ch.amplitude
-            break
-        end
-    end
-    if abs(amp) < 1e-15
-        @warn "Amplitude is zero, using real d_red"
-        return d_red + 0.0im
-    end
-
-    return d_red * (amp / abs(amp))
-end
-
-# ----------------------------------------------------------------------
-# Compute M-resolved ionization rates using PhotoIonization
-# ----------------------------------------------------------------------
-# ----------------------------------------------------------------------
-# Compute M-resolved ionization rates using PhotoIonization
-# ----------------------------------------------------------------------
-function computeMIonizationRates(excited::Level, initialMultiplet::Multiplet,
+function computeMIonizationRates(excitedLevel::Level,
+                                 finalMultiplet::Multiplet,
                                  nm::Nuclear.Model, grid::Radial.Grid,
                                  ionizingPulse::Pulse.AbstractPulse,
                                  piSettings::PhotoIonization.Settings)
-    """
-    Compute M-resolved ionization rates Γ(M) for the excited level.
-    Uses PhotoIonization with proper mValue settings for each M sublevel.
-    Returns a vector of length (2Je+1).
-    """
-    Je = excited.J
-    nE = Int( 2 * Je.num // Je.den + 1 )
+    Je = excitedLevel.J
+    nE = Int(2 * Je.num // Je.den + 1)
     gammaM = zeros(Float64, nE)
 
-    # Get the ionizing photon energy
     omega_ion = ionizingPulse.omega
-
-    # Get the final multiplet (ion states)
-    # For photoionization, we need the final ion states
-    # We'll use the initial multiplet as the final states (after removing the electron)
-    # In a real implementation, this would be the ion multiplet
-    finalMultiplet = initialMultiplet  # Placeholder
-
-    # Determine the polarization of the ionizing pulse
-    # For GaussianSimplified, we need to get the Stokes parameters
-    if typeof(ionizingPulse) == Pulse.GaussianSimplified
-        stokes = piSettings.stokes
-    else
-        stokes = ExpStokes()
-    end
-
-    # Loop over excited sublevels M
+    stokes = piSettings.stokes
     Me_list = projections(Je)
 
+    collectedLines = PhotoIonization.Line[]
+    collectedOnce  = false
+
     for (idx, M) in enumerate(Me_list)
-        println("\n  Computing gamma for M=$(Float64(M))...")
-
-        # Create settings for this specific M
-        # We need to set mValue = M (as a Float64)
         mVal = Float64(M)
-
-        # Create a copy of the settings with mValue set
         settingsM = PhotoIonization.Settings(
             piSettings;
-            mValue = mVal,
             photonEnergies = [omega_ion],
             stokes = stokes
         )
 
-        # Now compute the photoionization lines for this M
-        # We need to compute lines between the excited level (initial)
-        # and the ion levels (final)
-        try
-            lines = PhotoIonization.computeLines(
-                finalMultiplet,  # final states (ion)
-                initialMultiplet, # initial states (excited atom)
-                nm,
-                grid,
-                settingsM,
-                output=false
-            )
+        excitedMultiplet = Multiplet("excited", [excitedLevel])
 
-            # Find the line corresponding to our excited level
-            total_sigma = 0.0
+        lines = PhotoIonization.computeLines(
+            finalMultiplet,
+            excitedMultiplet,
+            nm,
+            grid,
+            settingsM,
+            output=true
+        )
+
+        if !collectedOnce
             for line in lines
-                if line.initialLevel.index == excited.index
-                    # Sum cross sections for all final states
-                    total_sigma += line.crossSection.Coulomb
+                if line.initialLevel.index == excitedLevel.index
+                    push!(collectedLines, line)
+                end
+            end
+            collectedOnce = true
+        end
+
+        total_sigma = 0.0
+        for line in lines
+            if line.initialLevel.index == excitedLevel.index
+                total_sigma += line.crossSection.Coulomb
+            end
+        end
+
+        intensity = ionizingPulse.A0^2 / (8 * pi * Defaults.getDefaults("alpha"))
+        photon_flux = intensity / omega_ion
+        gammaM[idx] = total_sigma * photon_flux
+    end
+
+    return (gammaM, collectedLines)
+end
+
+# ======================================================================
+# PAD HELPERS
+# ======================================================================
+
+# ----------------------------------------------------------------------
+# angularFunctionK_Mres — two-M₀ version of PhotoIonization.angularFunctionK
+#   Reduces exactly to the reference function when M0a == M0b.
+# ----------------------------------------------------------------------
+function angularFunctionK_Mres(L1::Int64, L2::Int64, X::Int64,
+                                Ji::AngularJ64, Jf::AngularJ64,
+                                kappa1::Int64, J1::AngularJ64,
+                                kappa2::Int64, J2::AngularJ64,
+                                gamma::Int64,
+                                M0a::Float64, M0b::Float64,
+                                mAlpha::Union{Nothing, Float64} = nothing)
+    s1 = Basics.Subshell(20, kappa1);  j1 = Basics.subshell_j(s1)
+    s2 = Basics.Subshell(20, kappa2);  j2 = Basics.subshell_j(s2)
+
+    wb = (2L1+1) * (Basics.twice(j1)+1) * (Basics.twice(J1)+1) *
+         (2L2+1) * (Basics.twice(j2)+1) * (Basics.twice(J2)+1)
+    wa = (2X+1) * sqrt(wb) *
+         AngularMomentum.phaseFactor([Ji, -1, Jf, 1, AngularJ64(1//2)])
+
+    J_val  = Float64(J1);  J_p = Float64(J2);  ℓ = X
+    J₀     = Float64(Ji);  Jα  = Float64(Jf)
+    jα_val = Float64(j1);  jα_p = Float64(j2)
+    j_val  = Float64(L1);  j_p  = Float64(L2)
+
+    Mα_range = mAlpha === nothing ? (-Jα:Jα) : (mAlpha:mAlpha)
+
+    Edmonds_sum = 0.0
+    for M in -J_val:J_val
+        for M_dprime in -J_p:J_p
+            Edmonds_sum1 = 0.0
+            for Mα in Mα_range
+                for mα in -jα_val:jα_val
+                    for mα_prime in -jα_p:jα_p
+                        T0 = (-1)^(round(Int, jα_val + jα_p + Jα + mα + mα_prime + Mα))
+                        T1 = AngularMomentum.Wigner_3j(J_p,  jα_p, Jα, M_dprime, mα_prime, -Mα)
+                        T2 = AngularMomentum.Wigner_3j(jα_val, J_val, Jα, -mα, M, Mα)
+                        T3 = AngularMomentum.Wigner_3j(jα_val, jα_p, ℓ, mα, -mα_prime, gamma)
+                        Edmonds_sum1 += T1 * T2 * T3 * T0
+                    end
                 end
             end
 
-            # Convert cross section to rate
-            # In atomic units: Γ = σ * J_photon, where J_photon = I / ω
-            # For a pulse, we use the peak intensity
-            if typeof(ionizingPulse) == Pulse.GaussianSimplified
-                # A0 is field amplitude, intensity = A0^2 / (8π α)
-                intensity = ionizingPulse.A0^2 / (8 * pi * Defaults.getDefaults("alpha"))
-                photon_flux = intensity / omega_ion
-                gammaM[idx] = total_sigma * photon_flux
-            else
-                # Fallback: use a reasonable estimate
-                gammaM[idx] = total_sigma * 1.0  # placeholder
+            Edmonds_sum2 = 0.0
+            for m in -j_val:j_val
+                for m_prime in -j_p:j_p
+                    T02 = (-1)^(round(Int, j_val + j_p + J₀ + m + m_prime + M0a))
+                    T12 = AngularMomentum.Wigner_3j(J_p, j_p, J₀, M_dprime, m_prime, -M0b)
+                    T22 = AngularMomentum.Wigner_3j(j_val, J_val, J₀, -m, M, M0a)
+                    T32 = AngularMomentum.Wigner_3j(j_val, j_p, ℓ, m, -m_prime, gamma)
+                    Edmonds_sum2 += T12 * T22 * T32 * T02
+                end
             end
 
-            println("    sigma = $(total_sigma), gamma = $(gammaM[idx])")
-
-        catch e
-            @warn "Failed to compute photoionization for M=$M: $e"
-            gammaM[idx] = 0.001  # fallback
+            Edmonds_sum += (2 * ℓ + 1) * Edmonds_sum1 * Edmonds_sum2
         end
     end
 
-    return gammaM
+    return wa * Edmonds_sum
 end
 
 # ----------------------------------------------------------------------
-# Build the M-resolved system
+# spinDensityMatrix_liouville — same convention as the reference
 # ----------------------------------------------------------------------
-function buildMResolvedSystem(scheme::MResolvedTwoLevelScheme, comp::Computation)
+function spinDensityMatrix_liouville(λ1::Int64, λ2::Int64,
+                                      stokes::Basics.ExpStokes)
+    if      λ1 == 1  && λ2 == 1;   return (1.0 + stokes.P3)/2.0
+    elseif  λ1 == 1  && λ2 == -1;  return (stokes.P1 - stokes.P2*im)/2.0
+    elseif  λ1 == -1 && λ2 == 1;   return (stokes.P1 + stokes.P2*im)/2.0
+    elseif  λ1 == -1 && λ2 == -1;  return (1.0 - stokes.P3)/2.0
+    else    error("Invalid helicities: λ1=$λ1, λ2=$λ2")
+    end
+end
+
+# ----------------------------------------------------------------------
+# computeMResolvedPAD
+#   dσ/dΩ(θ,φ) = Σ_{M0a,M0b} ρ_E[M0a,M0b] · Σ_{cha,chb,X,λ1,λ2}
+#                 K_Mres(cha,chb,M0a,M0b) · W(θ,φ) · amp_cha · amp_chb*
+#   Je is passed explicitly because the multi-level system has many J values.
+# ----------------------------------------------------------------------
+function computeMResolvedPAD(ρ_E::Matrix{ComplexF64},
+                              piLines::Vector{PhotoIonization.Line},
+                              Je::AngularJ64,
+                              θ_vals::Vector{Float64},
+                              φ_vals::Vector{Float64};
+                              gauge  ::Basics.EmGauge = Basics.Coulomb,
+                              mAlpha ::Union{Nothing,Float64} = nothing,
+                              stokes ::Basics.ExpStokes = Basics.ExpStokes())
+
+    nθ = length(θ_vals);  nφ = length(φ_vals)
+    PAD = zeros(Float64, nθ, nφ)
+
+    Ms = projections(Je)
+
+    println("\n  Computing M-resolved PAD on $(nθ)×$(nφ) grid, gauge = $gauge")
+
+    for line in piLines
+        sigmaBar = 0.0
+        for cha in line.channels
+            cha.gauge == gauge || continue
+            sigmaBar += abs(cha.amplitude)^2
+        end
+        sigmaBar < 1e-15 && continue
+
+        println("    line i=$(line.initialLevel.index) -> f=$(line.finalLevel.index), σ̄ = $(sigmaBar)")
+
+        angCsCoeff = 2.0 * pi^3 * 137.03599 /
+                     (line.photonEnergy * (Basics.twice(line.initialLevel.J) + 1))
+
+        for (iθ, θ) in enumerate(θ_vals)
+            for (iφ, φ) in enumerate(φ_vals)
+                val = 0.0 + 0.0im
+                for X in 1:20
+                    for cha in line.channels
+                        cha.gauge == gauge || continue
+                        L1 = cha.multipole.L; J1 = cha.symmetry.J; κ1 = cha.kappa
+                        l1 = Basics.subshell_l(Basics.Subshell(101, κ1))
+                        j1 = Basics.subshell_j(Basics.Subshell(20, κ1))
+
+                        for chb in line.channels
+                            chb.gauge == gauge || continue
+                            L2 = chb.multipole.L; J2 = chb.symmetry.J; κ2 = chb.kappa
+                            l2 = Basics.subshell_l(Basics.Subshell(101, κ2))
+                            j2 = Basics.subshell_j(Basics.Subshell(20, κ2))
+
+                            AngularMomentum.isTriangle(L1, L2, X)             || continue
+                            AngularMomentum.isTriangle(J1, J2, AngularJ64(X)) || continue
+                            AngularMomentum.isTriangle(j1, j2, AngularJ64(X)) || continue
+                            mod(l1 + l2 + X, 2) == 0                           || continue
+
+                            amp_prod = cha.amplitude * conj(chb.amplitude)
+
+                            for λ1 in (-1, 1), λ2 in (-1, 1)
+                                γ = λ2 - λ1
+
+                                W = 0.0
+                                for μ in (-1//2, 1//2)
+                                    W += PhotoIonization.angularFunctionW(
+                                        θ, L1, L2, X, λ1, λ2,
+                                        κ1, μ, κ2, μ, l1, l2)
+                                end
+                                W = W * spinDensityMatrix_liouville(λ1, λ2, stokes)
+                                W = W * exp(1.0im * (λ1 - λ2) * φ)
+                                W = W * (1.0im)^(L2 - L1) * (λ1 * λ2) / 2.0
+                                W = W * AngularMomentum.phaseMultipole(1.0im * λ1,  cha.multipole)
+                                W = W * AngularMomentum.phaseMultipole(-1.0im * λ2, chb.multipole)
+
+                                ρK = 0.0 + 0.0im
+                                for (iM, Ma) in enumerate(Ms)
+                                    M0a = Float64(Ma)
+                                    for (jM, Mb) in enumerate(Ms)
+                                        M0b = Float64(Mb)
+                                        ρ_ab = ρ_E[iM, jM]
+                                        abs(ρ_ab) < 1e-15 && continue
+                                        K = angularFunctionK_Mres(
+                                            L1, L2, X,
+                                            line.initialLevel.J, line.finalLevel.J,
+                                            κ1, J1, κ2, J2,
+                                            γ, M0a, M0b, mAlpha)
+                                        ρK += ρ_ab * K
+                                    end
+                                end
+
+                                val += ρK * W * amp_prod
+                            end
+                        end
+                    end
+                end
+                PAD[iθ, iφ] += real(val) / sigmaBar * angCsCoeff
+            end
+        end
+    end
+
+    return PAD
+end
+
+# ======================================================================
+# End PAD helpers
+# ======================================================================
+
+# ----------------------------------------------------------------------
+# buildMResolvedMultiLevelSystem
+#   Uses piSettings keyword (falls back to internal default if nothing).
+#   Captures (gammaIon, piLines) and stores piLines in the struct.
+# ----------------------------------------------------------------------
+function buildMResolvedMultiLevelSystem(scheme::MResolvedMultiLevelScheme,
+                                        comp::Computation;
+                                        piSettings::Union{Nothing, PhotoIonization.Settings}=nothing)
     println("\n" * "="^60)
-    println("BUILDING M-RESOLVED TWO-LEVEL SYSTEM")
+    println("BUILDING M-RESOLVED MULTI-LEVEL SYSTEM")
     println("="^60)
 
-    # Compute the multiplet (SCF)
-    println("\nRunning SCF to get atomic structure...")
-    multiplet = SelfConsistent.performSCF(comp.refConfigs, comp.nuclearModel, comp.grid, comp.asfSettings)
+    n_configs     = length(comp.refConfigs)
+    n_real_levels = n_configs - 1
+    n_transitions = n_real_levels - 1
 
-    # Get ground and excited levels
-    idx_g = scheme.levelSelection.indices[1]
-    idx_e = scheme.levelSelection.indices[2]
-    ground = multiplet.levels[idx_g]
-    excited = multiplet.levels[idx_e]
+    println("\nNumber of configurations: $n_configs")
+    println("Number of real levels:    $n_real_levels")
+    println("Number of transitions:    $n_transitions")
+    println("Ion config (last):        $(comp.refConfigs[end])")
 
-    Jg = ground.J
-    Je = excited.J
-    nG = Int( 2.0 * Jg.num // Jg.den + 1 )
-    nE = Int( 2.0 * Je.num // Je.den + 1 )
-    totalDim = nG + nE
-
-    println("\nSelected levels:")
-    println("  Ground:   index=$(ground.index), J=$Jg, nG=$nG, E=$(ground.energy) a.u.")
-    println("  Excited:  index=$(excited.index), J=$Je, nE=$nE, E=$(excited.energy) a.u.")
-    println("  Total dimension: $totalDim")
-
-    # Energy gap and detuning
-    E_gap = excited.energy - ground.energy
-    if isempty(comp.pulses)
-        error("At least one pulse required.")
+    if n_real_levels < 2
+        error("Need at least 2 real levels (ground + excited). " *
+              "Got $n_real_levels real levels and $n_configs total configs.")
     end
-    p1 = comp.pulses[1]
-    p1 = (typeof(p1) == Pulse.FelPulse) ? Pulse.convertPulse(p1) : p1
-    omega_ref = p1.omega
-    delta = (scheme.detuning != 0.0) ? scheme.detuning : (E_gap - omega_ref)
-    println("  Reference frequency: $(omega_ref) a.u.")
-    println("  Detuning: $(delta) a.u.")
 
-    # Compute dipole matrix elements
-    q = getPolarizationComponent(p1)
+    if n_transitions < 1
+        error("Need at least 1 dipole transition. Got $n_transitions. " *
+              "Provide at least 3 configs (ground + excited + ion).")
+    end
+
+    multiplets  = Vector{Multiplet}(undef, n_real_levels)
+    levels      = Vector{Level}(undef, n_real_levels)
+    J_values    = Vector{AngularJ64}(undef, n_real_levels)
+    n_sublevels = Vector{Int}(undef, n_real_levels)
+
+    println("\nRunning SCF for real levels...")
+    for i in 1:n_real_levels
+        multiplets[i]  = SelfConsistent.performSCF([comp.refConfigs[i]],
+                                                    comp.nuclearModel,
+                                                    comp.grid,
+                                                    comp.asfSettings)
+        levels[i]      = multiplets[i].levels[1]
+        J_values[i]    = levels[i].J
+        n_sublevels[i] = Int(2 * J_values[i].num // J_values[i].den + 1)
+
+        println("  Level $i: $(comp.refConfigs[i])  " *
+                "J=$(J_values[i])  n_sub=$(n_sublevels[i])  " *
+                "E=$(round(levels[i].energy, digits=6)) a.u.")
+    end
+
+    totalDim = sum(n_sublevels)
+    println("\nTotal dimension: $totalDim")
+
+    println("\nRunning SCF for the ion (ionization channel)...")
+    ionMultiplet = SelfConsistent.performSCF([comp.refConfigs[end]],
+                                              comp.nuclearModel,
+                                              comp.grid,
+                                              comp.asfSettings)
+    println("  Ion config: $(comp.refConfigs[end])")
+    println("  Ion levels: $(length(ionMultiplet.levels))")
+
+    if length(comp.pulses) < 2
+        error("Need at least two pulses: XUV pump and NIR ionizing.")
+    end
+
+    p1 = (typeof(comp.pulses[1]) == Pulse.FelPulse) ?
+         Pulse.convertPulse(comp.pulses[1]) : comp.pulses[1]
+    p2 = (typeof(comp.pulses[2]) == Pulse.FelPulse) ?
+         Pulse.convertPulse(comp.pulses[2]) : comp.pulses[2]
+
+    deltas = Vector{Float64}(undef, n_transitions)
+
+    if scheme.autoDetune || isempty(scheme.detunings)
+        println("\nAuto-calculating detunings from level energies...")
+        omega_pump = p1.omega
+        deltas[1]  = levels[2].energy - levels[1].energy - omega_pump
+
+        omega_nir = p2.omega
+        for i in 2:n_transitions
+            deltas[i] = levels[i+1].energy - levels[i].energy - omega_nir
+        end
+        println("  Detunings (a.u.): $deltas")
+    else
+        deltas = scheme.detunings
+        println("\nUsing user-specified detunings: $deltas")
+    end
+
+    println("\nComputing dipole matrix elements...")
+    q_pump = getPolarizationComponent(p1)
+    q_nir  = getPolarizationComponent(p2)
     stokes = ExpStokes()
 
-    D = computeMDipole(ground, excited, omega_ref, comp.grid, q, stokes)
-    println("  Dipole matrix size: $(size(D))")
+    dipoles = Vector{Matrix{ComplexF64}}(undef, n_transitions)
 
-    # Build index maps
-    groundIndices = Dict{AngularM64, Int}()
-    excitedIndices = Dict{AngularM64, Int}()
+    for i in 1:n_transitions
+        omega_use = (i == 1) ? p1.omega : p2.omega
+        q_use     = (i == 1) ? q_pump   : q_nir
+
+        dipoles[i] = computeMDipole(levels[i], levels[i+1], omega_use,
+                                    comp.grid, q_use, stokes)
+
+        println("  Dipole $i: $(comp.refConfigs[i]) → $(comp.refConfigs[i+1])  " *
+                "size=$(size(dipoles[i]))")
+    end
+
+    f = open( "/tmp/dipoles.txt", "w" )
+    for i in 1:n_transitions
+        println( f, "  Dipole $i: max|D| = $(maximum(abs.(dipoles[i])))")
+        for (j, row) in enumerate(eachrow(dipoles[i]))
+            println( f, "    row $j: $(row)")
+        end
+    end
+    close( f )
+
+    println("\nBuilding index maps...")
+    levelIndices = Vector{Dict{AngularM64, Int}}(undef, n_real_levels)
     indexToLevel = Vector{Int}(undef, totalDim)
-    indexToM = Vector{AngularM64}(undef, totalDim)
+    indexToM     = Vector{AngularM64}(undef, totalDim)
+    levelStart   = Vector{Int}(undef, n_real_levels)
 
-    # Ground state indices (1 to nG)
-    Mg_list = projections(Jg)
-    for (i, M) in enumerate(Mg_list)
-        M_ang = AngularM64(M.num, M.den)
-        groundIndices[M_ang] = i
-        indexToLevel[i] = 1  # ground
-        indexToM[i] = M_ang
+    global_idx = 1
+    for level_i in 1:n_real_levels
+        levelStart[level_i]   = global_idx
+        levelIndices[level_i] = Dict{AngularM64, Int}()
+
+        M_list = projections(J_values[level_i])
+        for M in M_list
+            M_ang = AngularM64(M.num, M.den)
+            levelIndices[level_i][M_ang] = global_idx
+            indexToLevel[global_idx]     = level_i
+            indexToM[global_idx]         = M_ang
+            global_idx += 1
+        end
     end
 
-    # Excited state indices (nG+1 to nG+nE)
-    Me_list = projections(Je)
-    for (j, M) in enumerate(Me_list)
-        M_ang = AngularM64(M.num, M.den)
-        idx = nG + j
-        excitedIndices[M_ang] = idx
-        indexToLevel[idx] = 2  # excited
-        indexToM[idx] = M_ang
+    levelNotations = copy(scheme.levelNotations)
+    while length(levelNotations) < n_real_levels
+        push!(levelNotations, string(comp.refConfigs[length(levelNotations)+1]))
     end
+    levelNotations = levelNotations[1:n_real_levels]
 
-    println("  Ground indices: $groundIndices")
-    println("  Excited indices: $excitedIndices")
+    println("\nComputing M-resolved ionization rates from highest level...")
+    gammaIon = zeros(Float64, n_sublevels[end])
+    piLines  = PhotoIonization.Line[]
 
-    # Compute M-resolved ionization rates
-    # Use the second pulse for ionization (if available)
-    gammaM = zeros(Float64, nE)
-    if length(comp.pulses) >= 2
-        ionizingPulse = comp.pulses[2]
-        ionizingPulse = (typeof(ionizingPulse) == Pulse.FelPulse) ? Pulse.convertPulse(ionizingPulse) : ionizingPulse
-
-        # Setup photoionization settings with proper M-resolution
-        # Using the correct PhotoIonization.Settings with mValue
-        piSettings = PhotoIonization.Settings(
-            PhotoIonization.Settings(),
-            multipoles                      = [Basics.E1, Basics.E2],
-            gauges                          = [Basics.UseCoulomb, Basics.UseBabushkin],
-            electronEnergies                = [ionizingPulse.omega - (excited.energy - minimum([lvl.energy for lvl in multiplet.levels]))],
-            thetas                          = collect(0:π/6:2π),
-            phis                            = collect(0:π/6:2π),
-            mValue                          = 0.5,  # This will be overridden per M
-            calcAnisotropy                  = true,
-            calcPartialCs                   = false,
-            calcTimeDelay                   = false,
-            calcNonE1AngleDifferentialCS    = true,
-            calcTensors                     = false,
-            printBefore                     = false,
-            stokes                          = ExpStokes(),
-            freeElectronShift               = 0.0,
-            lValues                         = [0,1,2,3,4]
-        )
-
-        # Compute gammaM using the PhotoIonization functions
-        gammaM = computeMIonizationRates(excited, multiplet, comp.nuclearModel,
-                                          comp.grid, ionizingPulse, piSettings)
+    if scheme.gammaIon > 0.0
+        gammaIon .= scheme.gammaIon
+        println("  Using uniform gammaIon = $(scheme.gammaIon) a.u.")
     else
-        # Only one pulse: use uniform gamma from scheme.gammaBase
-        gammaM = fill(scheme.gammaBase, nE)
-        println("  Only one pulse provided, using uniform gamma = $(scheme.gammaBase)")
+        piSettings_use = if piSettings === nothing
+            println("  No piSettings supplied; using internal defaults.")
+            PhotoIonization.Settings(
+                PhotoIonization.Settings(),
+                multipoles = [Basics.E1, Basics.E2],
+                gauges     = [Basics.UseCoulomb, Basics.UseBabushkin],
+                electronEnergies = [p2.omega + levels[end].energy],
+                thetas     = collect(0:π/6:2π),
+                phis       = collect(0:π/6:2π),
+                mValue     = 0.5,
+                calcAnisotropy               = false,
+                calcPartialCs                = false,
+                calcTimeDelay                = false,
+                calcNonE1AngleDifferentialCS = false,
+                calcTensors                  = false,
+                printBefore                  = false,
+                stokes                       = ExpStokes(),
+                freeElectronShift            = 0.0,
+                lValues                      = [0, 1, 2, 3, 4, 5, 6]
+            )
+        else
+            println("  Using user-supplied PhotoIonization.Settings.")
+            PhotoIonization.Settings(
+                piSettings;
+                electronEnergies = [p2.omega + levels[end].energy],
+            )
+        end
+
+        # ← now correctly destructured (gammaIon::Vector, piLines::Vector{Line})
+        gammaIon, piLines = computeMIonizationRates(levels[end], ionMultiplet,
+                                                    comp.nuclearModel, comp.grid,
+                                                    p2, piSettings_use)
+        println("  Computed ionization rates: $gammaIon")
+        println("  Collected $(length(piLines)) photoionization line(s).")
     end
 
-    println("\n  GammaM (M-resolved ionization rates):")
-    for (j, M) in enumerate(Me_list)
-        println("    M=$(Float64(M)): $(gammaM[j]) a.u.")
-    end
-
-    # Determine time step and max time
-    dt = 0.1
+    dt    = 0.1
     t_max = 0.0
+
     for p in comp.pulses
         p_conv = (typeof(p) == Pulse.FelPulse) ? Pulse.convertPulse(p) : p
         if typeof(p_conv) == Pulse.GaussianSimplified
-            t_max = max(t_max, p_conv.timeDelay + 3*p_conv.fwhm)
+            t_max = max(t_max, p_conv.timeDelay + 3 * p_conv.fwhm)
         end
     end
-    if t_max == 0.0
-        # Estimate from Rabi frequency
-        if typeof(p1) == Pulse.GaussianSimplified
-            # Estimate max Rabi frequency
-            Ω_max = 0.0
-            for i in 1:nG, j in 1:nE
-                Ω_max = max(Ω_max, abs(D[j, i] * p1.A0))
-            end
-            if Ω_max > 1e-12
-                t_max = 2π / Ω_max * 10
-                dt = 2π / Ω_max / 100
-            else
-                t_max = 500.0
-                dt = 0.1
-            end
-        else
-            t_max = 500.0
-            dt = 0.1
-        end
-    end
-    println("  Time step: $(dt) a.u.")
-    println("  Max time: $(t_max) a.u.")
 
-    # Build system
-    sys = MResolvedSystem(
-        ground, excited,
-        Jg, Je,
-        nG, nE, totalDim,
-        D,
-        gammaM,
-        delta,
+    if t_max == 0.0
+        Ω_max = 0.0
+        for dmat in dipoles
+            if !isempty(dmat)
+                Ω_max = max(Ω_max, maximum(abs.(dmat)) * p1.A0)
+            end
+        end
+        if Ω_max > 1e-12
+            t_max = 2π / Ω_max * 10
+            dt    = 2π / Ω_max / 100
+        else
+            t_max = 1000.0
+            dt    = 0.1
+        end
+    end
+
+    println("\nTime parameters:")
+    println("  dt    = $dt a.u.")
+    println("  t_max = $t_max a.u.")
+
+    sys = MResolvedMultiLevelSystem(
+        levels,
+        comp.refConfigs[1:n_real_levels],
+        levelNotations,
+        J_values,
+        n_sublevels,
+        totalDim,
+        dipoles,
+        gammaIon,
+        piLines,                             # ← passed to struct
+        deltas,
         comp.pulses,
-        omega_ref,
-        dt, t_max,
-        groundIndices, excitedIndices,
-        indexToLevel, indexToM
+        p1.omega,
+        dt,
+        t_max,
+        levelIndices,
+        indexToLevel,
+        indexToM,
+        levelStart
     )
 
     return sys
 end
 
 # ----------------------------------------------------------------------
-# Rabi frequency for M-resolved system
+# multiLevelRabi  (unchanged)
 # ----------------------------------------------------------------------
-function rabiFrequency(t::Float64, sys::MResolvedSystem)
-    """
-    Computes the complex Rabi frequency Ω(t) for the pump pulse.
-    """
-    Ω = 0.0 + 0.0im
-
-    # Use only the first pulse (pump)
+function multiLevelRabi(t::Float64, sys::MResolvedMultiLevelSystem,
+                        transition_idx::Int)
     if isempty(sys.pulses)
-        return Ω
+        return 0.0 + 0.0im
     end
 
-    pulse = sys.pulses[1]
+    pulse_idx = (transition_idx == 1) ? 1 : 2
+    if pulse_idx > length(sys.pulses)
+        return 0.0 + 0.0im
+    end
+
+    pulse = sys.pulses[pulse_idx]
     p = (typeof(pulse) == Pulse.FelPulse) ? Pulse.convertPulse(pulse) : pulse
 
     if typeof(p) != Pulse.GaussianSimplified
-        return Ω
+        return 0.0 + 0.0im
     end
 
-    # Envelope (Gaussian)
     sigma = p.fwhm / (2 * sqrt(2 * log(2)))
     td = p.timeDelay
-    env = exp(- (t - td)^2 / (2 * sigma^2))
+    env = exp(-(t - td)^2 / (2 * sigma^2))
 
-    # Field amplitude
     E0 = p.A0
-
-    # Rabi frequency: Ω = -d * E0 / 2
-    # For the M-resolved case, this is the overall amplitude
-    # The M-dependence is in the dipole matrix D
     Ω = -E0 / 2 * env
 
     return Ω
 end
 
 # ----------------------------------------------------------------------
-# Build M-resolved Hamiltonian
+# buildMResolvedMultiLevelHamiltonian  (unchanged)
 # ----------------------------------------------------------------------
-function buildMResolvedHamiltonian(t::Float64, sys::MResolvedSystem)
-    """
-    Build the full (nG+nE) × (nG+nE) Hamiltonian matrix.
-    """
-    nG = sys.nGround
-    nE = sys.nExcited
+function buildMResolvedMultiLevelHamiltonian(t::Float64,
+                                             sys::MResolvedMultiLevelSystem)
     N = sys.totalDim
     H = zeros(ComplexF64, N, N)
+    n_levels = length(sys.levels)
 
-    # Ground state energies (set to 0)
-    # No diagonal coupling for ground
+    for level_i in 1:n_levels
+        start = sys.levelStart[level_i]
+        n_sub = sys.n_sublevels[level_i]
 
-    # Excited state energies (-detuning)
-    for j in 1:nE
-        idx = nG + j
-        H[idx, idx] = -sys.delta
+        if level_i == 1
+            # Ground state energy = 0
+        else
+            Δ = sys.deltas[level_i - 1]
+            for j in 1:n_sub
+                idx = start + j - 1
+                H[idx, idx] = -Δ
+            end
+        end
     end
 
-    # Coupling between ground and excited (Rabi)
-    Ω = rabiFrequency(t, sys)
-    D = sys.dipole  # (nE × nG) matrix
+    for level_i in 1:(n_levels - 1)
+        n_i = sys.n_sublevels[level_i]
+        n_j = sys.n_sublevels[level_i + 1]
+        start_i = sys.levelStart[level_i]
+        start_j = sys.levelStart[level_i + 1]
 
-    # Coupling: H = -d·E/2
-    for i in 1:nG
-        for j in 1:nE
-            # H[ground_i, excited_j] = 0.5 * Ω * D[j, i]
-            # H[excited_j, ground_i] = 0.5 * conj(Ω) * conj(D[j, i])
-            H[i, nG+j] = 0.5 * Ω * D[j, i]
-            H[nG+j, i] = 0.5 * conj(Ω) * conj(D[j, i])
+        D = sys.dipoles[level_i]
+        Ω = multiLevelRabi(t, sys, level_i)
+
+        for i in 1:n_i
+            for j in 1:n_j
+                H[start_i + i - 1, start_j + j - 1] = 0.5 * Ω * D[j, i]
+                H[start_j + j - 1, start_i + i - 1] = 0.5 * conj(Ω) * conj(D[j, i])
+            end
         end
     end
 
@@ -532,47 +774,40 @@ function buildMResolvedHamiltonian(t::Float64, sys::MResolvedSystem)
 end
 
 # ----------------------------------------------------------------------
-# M-resolved density matrix derivative
+# mResolvedMultiLevelDerivative  (unchanged)
 # ----------------------------------------------------------------------
-function mResolvedDensityMatrixDerivative(ρ::Matrix{ComplexF64}, t::Float64,
-                                          sys::MResolvedSystem)
-    """
-    Liouville equation for M-resolved density matrix with M-dependent ionization.
-    """
-    nG = sys.nGround
-    nE = sys.nExcited
+function mResolvedMultiLevelDerivative(ρ::Matrix{ComplexF64}, t::Float64,
+                                       sys::MResolvedMultiLevelSystem)
+    n_levels = length(sys.levels)
     N = sys.totalDim
 
-    # Build Hamiltonian
-    H = buildMResolvedHamiltonian(t, sys)
-
-    # Liouville: dρ/dt = -i [H, ρ]
+    H = buildMResolvedMultiLevelHamiltonian(t, sys)
     dρ = -im * (H * ρ - ρ * H)
 
-    # Add M-dependent ionization decay for excited states
-    # And coherence decay
-    for j in 1:nE
-        idxE = nG + j
-        gamma_j = sys.gammaM[j]
+    highest_idx = n_levels
+    start_highest = sys.levelStart[highest_idx]
+    n_highest = sys.n_sublevels[highest_idx]
 
-        # Population decay of excited sublevel
+    for j in 1:n_highest
+        idxE = start_highest + j - 1
+        gamma_j = sys.gammaIon[j]
+
         dρ[idxE, idxE] -= gamma_j * ρ[idxE, idxE]
 
-        # Coherence decay with other excited sublevels
-        for k in 1:nE
+        for k in 1:n_highest
             if j != k
-                idxE2 = nG + k
-                gamma_k = sys.gammaM[k]
-                # Coherence decay rate = (γ_j + γ_k) / 2
+                idxE2 = start_highest + k - 1
+                gamma_k = sys.gammaIon[k]
                 dρ[idxE, idxE2] -= 0.5 * (gamma_j + gamma_k) * ρ[idxE, idxE2]
                 dρ[idxE2, idxE] -= 0.5 * (gamma_j + gamma_k) * ρ[idxE2, idxE]
             end
         end
 
-        # Coherence decay with ground sublevels
-        for i in 1:nG
-            dρ[idxE, i] -= 0.5 * gamma_j * ρ[idxE, i]
-            dρ[i, idxE] -= 0.5 * gamma_j * ρ[i, idxE]
+        for i in 1:N
+            if i != idxE
+                dρ[idxE, i] -= 0.5 * gamma_j * ρ[idxE, i]
+                dρ[i, idxE] -= 0.5 * gamma_j * ρ[i, idxE]
+            end
         end
     end
 
@@ -580,131 +815,124 @@ function mResolvedDensityMatrixDerivative(ρ::Matrix{ComplexF64}, t::Float64,
 end
 
 # ----------------------------------------------------------------------
-# Extract M-resolved populations and observables
+# extractMResolvedMultiLevelPopulations  (unchanged)
 # ----------------------------------------------------------------------
-function extractMResolvedPopulations(ρ::Matrix{ComplexF64}, sys::MResolvedSystem)
-    """
-    Extract M-resolved populations and compute observables including CDAD.
-    """
-    nG = sys.nGround
-    nE = sys.nExcited
+function extractMResolvedMultiLevelPopulations(ρ::Matrix{ComplexF64},
+                                                sys::MResolvedMultiLevelSystem)
+    n_levels = length(sys.levels)
 
-    # Ground state M-populations
-    popGroundM = [real(ρ[i, i]) for i in 1:nG]
+    popLevelsM = Vector{Vector{Float64}}(undef, n_levels)
+    popLevels = Vector{Float64}(undef, n_levels)
 
-    # Excited state M-populations
-    popExcitedM = [real(ρ[nG+j, nG+j]) for j in 1:nE]
+    for level_i in 1:n_levels
+        start = sys.levelStart[level_i]
+        n_sub = sys.n_sublevels[level_i]
+        popM = [real(ρ[start + j - 1, start + j - 1]) for j in 1:n_sub]
+        popLevelsM[level_i] = popM
+        popLevels[level_i] = sum(popM)
+    end
 
-    # Total populations
-    popGround = sum(popGroundM)
-    popExcited = sum(popExcitedM)
-    popIon = 1.0 - popGround - popExcited
+    popIon = 1.0 - sum(popLevels)
 
-    # CDAD asymmetry: (pop(+M) - pop(-M)) / (pop(+M) + pop(-M))
-    # For J_e, we pair +M and -M
     cdad = Float64[]
-    Me_list = projections(sys.excitedJ)
+    highest_idx = n_levels
+    J_highest = sys.J_values[highest_idx]
+    n_highest = sys.n_sublevels[highest_idx]
 
-    # Find pairs of ±M
-    # Get 2J as integer
-    twoJ = div(2 * sys.excitedJ.num, sys.excitedJ.den)
-    cdad = Float64[]
+    if n_highest > 1
+        twoJ = div(2 * J_highest.num, J_highest.den)
+        for m_num in 2:2:twoJ
+            M_val = m_num // 2
+            M_plus = AngularM64(M_val)
+            M_minus = AngularM64(-M_val)
 
-    # Loop over M values from 1 to J (in half-integer steps)
-    # M runs: 1//2, 1, 3//2, 2, ... up to J
-    for m_num in 2:2:twoJ  # m_num = 2M, so M = m_num/2
-        M_val = m_num // 2
-        M_plus = AngularM64(M_val)
-        M_minus = AngularM64(-M_val)
-
-        if haskey(sys.excitedIndices, M_plus) && haskey(sys.excitedIndices, M_minus)
-            idx_plus = sys.excitedIndices[M_plus]
-            idx_minus = sys.excitedIndices[M_minus]
-            p_plus = real(ρ[idx_plus, idx_plus])
-            p_minus = real(ρ[idx_minus, idx_minus])
-            if p_plus + p_minus > 1e-15
-                push!(cdad, (p_plus - p_minus) / (p_plus + p_minus))
-            else
-                push!(cdad, 0.0)
+            if haskey(sys.levelIndices[highest_idx], M_plus) &&
+               haskey(sys.levelIndices[highest_idx], M_minus)
+                idx_plus = sys.levelIndices[highest_idx][M_plus]
+                idx_minus = sys.levelIndices[highest_idx][M_minus]
+                p_plus = real(ρ[idx_plus, idx_plus])
+                p_minus = real(ρ[idx_minus, idx_minus])
+                if p_plus + p_minus > 1e-15
+                    push!(cdad, (p_plus - p_minus) / (p_plus + p_minus))
+                else
+                    push!(cdad, 0.0)
+                end
             end
         end
     end
-    return (popGroundM, popExcitedM, popGround, popExcited, popIon, cdad)
+
+    return (popLevelsM, popLevels, popIon, cdad)
 end
 
 # ----------------------------------------------------------------------
-# Print M-resolved state for debugging
+# printMResolvedMultiLevelState  (unchanged)
 # ----------------------------------------------------------------------
-function printMResolvedState(ρ::Matrix{ComplexF64}, sys::MResolvedSystem, label::String="")
-    nG = sys.nGround
-    nE = sys.nExcited
+function printMResolvedMultiLevelState(ρ::Matrix{ComplexF64},
+                                       sys::MResolvedMultiLevelSystem,
+                                       label::String="")
+    n_levels = length(sys.levels)
     N = sys.totalDim
 
     println("\n$label")
     println("  Density matrix ($N×$N):")
-    println("  Ground sublevels (M):")
-    for i in 1:nG
-        M = sys.indexToM[i]
-        println("    M=$M: $(real(ρ[i,i]))")
-    end
-    println("  Excited sublevels (M):")
-    for j in 1:nE
-        idx = nG + j
-        M = sys.indexToM[idx]
-        println("    M=$M: $(real(ρ[idx,idx]))")
-    end
-    println("  Coherences (|ρ_ij| > 1e-6):")
-    for i in 1:N
-        for j in (i+1):N
-            if abs(ρ[i,j]) > 1e-6
-                println("    ρ[$i,$j] = $(ρ[i,j])")
-            end
+
+    for level_i in 1:n_levels
+        start = sys.levelStart[level_i]
+        n_sub = sys.n_sublevels[level_i]
+        lbl = levelLabel(sys, level_i)
+        println("  Level $level_i ($lbl):")
+        M_list = projections(sys.J_values[level_i])
+        for j in 1:n_sub
+            M = M_list[j]
+            idx = start + j - 1
+            println("    M=$M: $(real(ρ[idx, idx]))")
         end
     end
 end
 
 # ----------------------------------------------------------------------
-# Main perform function
+# performMResolvedMultiLevel
+#   calcPAD toggle: PAD (and its CDAD-sensitive asymmetry) is computed only
+#   if calcPAD=true AND piLines is non-empty.
+#   piSettings keyword: forwarded to the system builder.
 # ----------------------------------------------------------------------
-function performMResolvedTwoLevel(scheme::MResolvedTwoLevelScheme, comp::Computation, output::Bool=true)
+function performMResolvedMultiLevel(scheme::MResolvedMultiLevelScheme,
+                                    comp::Computation,
+                                    output::Bool=true;
+                                    calcPAD::Bool=true,
+                                    piSettings::Union{Nothing, PhotoIonization.Settings}=nothing)
     println("\n" * "="^60)
-    println("M-RESOLVED TWO-LEVEL TWO-COLOUR IONIZATION")
-    println("Full Matrix Propagator with M-dependent Ionization")
+    println("M-RESOLVED MULTI-LEVEL TWO-COLOUR IONIZATION")
+    println("Sequential multiphoton absorption through Rydberg states")
     println("="^60)
 
-    # 1. Build the system
-    sys = buildMResolvedSystem(scheme, comp)
+    # 1. Build system
+    sys = buildMResolvedMultiLevelSystem(scheme, comp; piSettings=piSettings)
 
-    # 2. Initial density matrix: ground state, M=0 (or thermal distribution)
+    # 2. Initial density matrix: lowest M of ground state
     ρ0 = zeros(ComplexF64, sys.totalDim, sys.totalDim)
-
-    # Start in ground M=0 (if J_g >= 0)
-    if haskey(sys.groundIndices, AngularM64(0))
-        idx0 = sys.groundIndices[AngularM64(0)]
+    M0 = projections(sys.J_values[1])[1]
+    M0_ang = AngularM64(M0.num, M0.den)
+    if haskey(sys.levelIndices[1], M0_ang)
+        idx0 = sys.levelIndices[1][M0_ang]
         ρ0[idx0, idx0] = 1.0
-        println("\nInitial state: ground M=0")
+        println("\nInitial state: ground $(levelLabel(sys, 1)), M=$M0")
     else
-        # If J_g doesn't have M=0 (e.g., J_g=1/2), start in M=+1/2
-        first_M = projections(sys.groundJ)[1]
-        first_M_ang = AngularM64(first_M.num, first_M.den)
-        idx0 = sys.groundIndices[first_M_ang]
-        ρ0[idx0, idx0] = 1.0
-        println("\nInitial state: ground M=$(first_M)")
+        error("Could not find initial M state")
     end
-    printMResolvedState(ρ0, sys, "Initial state")
 
     # 3. Time span
     tspan = (0.0, sys.t_max)
     dt = sys.dt
     println("\nPropagation parameters:")
     println("  t_span = $(tspan[1]) to $(tspan[2]) a.u.")
-    println("  dt = $(dt) a.u.")
+    println("  dt = $dt a.u.")
     println("  Number of steps = $(Int(ceil((tspan[2]-tspan[1])/dt)))")
 
     # 4. Propagate
     println("\nStarting propagation...")
     times, ρ_history = propagateDensityMatrix(
-        (ρ, t) -> mResolvedDensityMatrixDerivative(ρ, t, sys),
+        (ρ, t) -> mResolvedMultiLevelDerivative(ρ, t, sys),
         ρ0, tspan, dt
     )
     println("Propagation complete. $(length(times)) time steps saved.")
@@ -712,104 +940,150 @@ function performMResolvedTwoLevel(scheme::MResolvedTwoLevelScheme, comp::Computa
     # 5. Extract observables
     println("\nExtracting observables...")
     n_steps = length(times)
-    popGround = Vector{Float64}(undef, n_steps)
-    popExcited = Vector{Float64}(undef, n_steps)
+    n_levels = length(sys.levels)
+
+    popLevelsM = Vector{Vector{Vector{Float64}}}(undef, n_steps)
+    popLevels = Vector{Vector{Float64}}(undef, n_steps)
     popIon = Vector{Float64}(undef, n_steps)
-    popGroundM = Vector{Vector{Float64}}(undef, n_steps)
-    popExcitedM = Vector{Vector{Float64}}(undef, n_steps)
     cdad = Vector{Vector{Float64}}(undef, n_steps)
 
     for i in 1:n_steps
-        pGM, pEM, pG, pE, pI, c = extractMResolvedPopulations(ρ_history[i], sys)
-        popGroundM[i] = pGM
-        popExcitedM[i] = pEM
-        popGround[i] = pG
-        popExcited[i] = pE
+        pLM, pL, pI, c = extractMResolvedMultiLevelPopulations(ρ_history[i], sys)
+        popLevelsM[i] = pLM
+        popLevels[i] = pL
         popIon[i] = pI
         cdad[i] = c
     end
 
     # 6. Print final populations
     println("\nFinal populations (at t = $(times[end]) a.u.):")
-    println("  Ground total:  $(popGround[end])")
-    for (j, M) in enumerate(projections(sys.groundJ))
-        println("    M=$M: $(popGroundM[end][j])")
+    for level_i in 1:n_levels
+        lbl = levelLabel(sys, level_i)
+        println("  $lbl: $(popLevels[end][level_i])")
+        M_list = projections(sys.J_values[level_i])
+        for (j, M) in enumerate(M_list)
+            println("    M=$M: $(popLevelsM[end][level_i][j])")
+        end
     end
-    println("  Excited total: $(popExcited[end])")
-    for (j, M) in enumerate(projections(sys.excitedJ))
-        println("    M=$M: $(popExcitedM[end][j])")
-    end
-    println("  Ionization:    $(popIon[end])")
+    println("  Ionization: $(popIon[end])")
+
     if !isempty(cdad[end])
         println("  CDAD values:")
         for (i, asym) in enumerate(cdad[end])
-            println("    ±$(i): $(asym)")
+            println("    ±$(i): $asym")
         end
     end
 
-    # 7. Save results to file
-    println("\nSaving results to 'm_resolved_results.dat'...")
-    # Create header
-    header = "Time\tGround_total\tExcited_total\tIonization"
-    for M in projections(sys.groundJ)
-        header *= "\tGround_M=$(M)"
+    # 7. M-resolved PAD (switchable)
+    PAD    = nothing
+    θ_vals = Float64[]
+    φ_vals = Float64[]
+
+    if !calcPAD
+        println("\n[INFO] PAD computation disabled (calcPAD=false).")
+    elseif isempty(sys.piLines)
+        println("\n[INFO] calcPAD=true but no photoionization lines were collected. " *
+                "Skipping PAD.  (Was scheme.gammaIon > 0?)")
+    else
+        println("\nComputing M-resolved PAD from the highest level...")
+        θ_vals = collect(0.0:π/180:π)
+        φ_vals = collect(0.0:π/90:2π - π/90)
+
+        highest_idx = n_levels
+        start_h    = sys.levelStart[highest_idx]
+        n_h        = sys.n_sublevels[highest_idx]
+        ρ_E_final  = ρ_history[end][start_h:start_h+n_h-1, start_h:start_h+n_h-1]
+        Je_highest = sys.J_values[highest_idx]
+
+        stokes_pad = ExpStokes()
+        PAD = computeMResolvedPAD(ρ_E_final, sys.piLines, Je_highest,
+                                  θ_vals, φ_vals;
+                                  gauge  = Basics.Coulomb,
+                                  mAlpha = nothing,
+                                  stokes = stokes_pad)
+        println("PAD computed. Max value = $(maximum(PAD)), integral ≈ " *
+                "$(sum(PAD .* sin.(θ_vals) .* (θ_vals[2]-θ_vals[1]) .* (φ_vals[2]-φ_vals[1])))")
+
+        pad_header = "theta\\phi\t" * join([string(φ) for φ in φ_vals], "\t")
+        writedlm("m_resolved_multilevel_PAD.dat",
+                 [pad_header; hcat(θ_vals, PAD)], '\t')
+        println("PAD saved to m_resolved_multilevel_PAD.dat")
     end
-    for M in projections(sys.excitedJ)
-        header *= "\tExcited_M=$(M)"
+
+    # 8. Save results
+    println("\nSaving results to 'm_resolved_multilevel.dat'...")
+
+    header = "Time"
+    for level_i in 1:n_levels
+        lbl = levelLabel(sys, level_i)
+        header *= "\t$(lbl)_total"
+        M_list = projections(sys.J_values[level_i])
+        for M in M_list
+            header *= "\t$(lbl)_M=$(Float64(M))"
+        end
     end
+    header *= "\tIonization"
     if !isempty(cdad[1])
         for i in 1:length(cdad[1])
             header *= "\tCDAD_±$(i)"
         end
     end
 
-    # Build data matrix
-    n_cols = 4 + length(projections(sys.groundJ)) + length(projections(sys.excitedJ)) + length(cdad[1])
+    n_cdad = isempty(cdad[1]) ? 0 : length(cdad[1])
+    n_cols = 1 + n_levels + sum([length(projections(sys.J_values[i])) for i in 1:n_levels]) + 1 + n_cdad
     data = zeros(Float64, n_steps, n_cols)
+
     for i in 1:n_steps
         data[i, 1] = times[i]
-        data[i, 2] = popGround[i]
-        data[i, 3] = popExcited[i]
-        data[i, 4] = popIon[i]
-        col = 5
-        for p in popGroundM[i]
-            data[i, col] = p
+        col = 2
+        for level_i in 1:n_levels
+            data[i, col] = popLevels[i][level_i]
             col += 1
+            for p in popLevelsM[i][level_i]
+                data[i, col] = p
+                col += 1
+            end
         end
-        for p in popExcitedM[i]
-            data[i, col] = p
-            col += 1
-        end
-        for c in cdad[i]
-            data[i, col] = c
-            col += 1
+        data[i, col] = popIon[i]
+        col += 1
+        if n_cdad > 0
+            for c in cdad[i]
+                data[i, col] = c
+                col += 1
+            end
         end
     end
 
-    writedlm("m_resolved_results.dat", [header; data], '\t')
+    writedlm("m_resolved_multilevel.dat", [header; data], '\t')
     println("Results saved.")
 
-    # 8. Return results
+    # 9. Return
     if output
         results = Dict{String,Any}()
         results["times"] = times
-        results["popGround"] = popGround
-        results["popExcited"] = popExcited
+        results["popLevels"] = popLevels
+        results["popLevelsM"] = popLevelsM
         results["ionization"] = popIon
-        results["popGroundM"] = popGroundM
-        results["popExcitedM"] = popExcitedM
         results["cdad"] = cdad
         results["sys"] = sys
         results["ρ_history"] = ρ_history
+        if PAD !== nothing
+            results["PAD"]    = PAD
+            results["θ_vals"] = θ_vals
+            results["φ_vals"] = φ_vals
+        end
         return results
     else
         return nothing
     end
 end
 
-# ----------------------------------------------------------------------
-# Dispatch for perform
-# ----------------------------------------------------------------------
-function Basics.perform(scheme::MResolvedTwoLevelScheme, comp::Computation; output::Bool=true)
-    return performMResolvedTwoLevel(scheme, comp, output=output)
+# Dispatch — forwards both keywords
+function Basics.perform(scheme::MResolvedMultiLevelScheme, comp::Computation;
+                        output::Bool=true,
+                        calcPAD::Bool=true,
+                        piSettings::Union{Nothing, PhotoIonization.Settings}=nothing)
+    return performMResolvedMultiLevel(scheme, comp, output=output,
+                                       calcPAD=calcPAD,
+                                       piSettings=piSettings)
 end
