@@ -10,7 +10,7 @@
 
 using ..Basics, ..Defaults, ..Pulse, ..PhotoExcitation, ..PhotoIonization
 using ..SelfConsistent, ..Radial, ..Nuclear, ..ManyElectron, ..AngularMomentum
-using LinearAlgebra, DelimitedFiles, Printf
+using LinearAlgebra, DelimitedFiles, Printf, WignerSymbols
 
 export MResolvedMultiLevelScheme, performMResolvedMultiLevel, levelLabel
 
@@ -40,22 +40,14 @@ function MResolvedMultiLevelScheme(indices::Vector{Int}, labels::Vector{String},
 
     return MResolvedMultiLevelScheme(
         LevelSelection(false, indices, LevelSymmetry[]),
-        labels,
-        gammaIon,
-        detunings,
-        includeCoherences,
-        autoDetune
+        labels, gammaIon, detunings, includeCoherences, autoDetune
     )
 end
 
 function MResolvedMultiLevelScheme()
     return MResolvedMultiLevelScheme(
         LevelSelection(false, Int[], LevelSymmetry[]),
-        String[],
-        0.0,
-        Float64[],
-        true,
-        true
+        String[], 0.0, Float64[], true, true
     )
 end
 
@@ -84,34 +76,34 @@ end
 # MResolvedMultiLevelSystem   (+ piLines field)
 # ----------------------------------------------------------------------
 struct MResolvedMultiLevelSystem
-    levels::Vector{Level}
-    levelConfigs::Vector{Configuration}
-    levelNotations::Vector{String}
-    J_values::Vector{AngularJ64}
-    n_sublevels::Vector{Int}
-    totalDim::Int
+    levels         ::Vector{Level}
+    levelConfigs   ::Vector{Configuration}
+    levelNotations ::Vector{String}
+    J_values       ::Vector{AngularJ64}
+    n_sublevels    ::Vector{Int}
+    totalDim       ::Int
 
-    dipoles::Vector{Matrix{ComplexF64}}
+    dipoles        ::Vector{Matrix{ComplexF64}}
 
-    gammaIon::Vector{Float64}
-    piLines ::Vector{PhotoIonization.Line}        # ← ADDED: amplitudes for PAD
+    gammaIon       ::Vector{Float64}
+    piLines        ::Vector{PhotoIonization.Line}
 
-    deltas::Vector{Float64}
+    deltas         ::Vector{Float64}
 
-    pulses::Vector{Pulse.AbstractPulse}
-    omega_ref::Float64
+    pulses         ::Vector{Pulse.AbstractPulse}
+    omega_ref      ::Float64
 
-    dt::Float64
-    t_max::Float64
+    dt             ::Float64
+    t_max          ::Float64
 
-    levelIndices::Vector{Dict{AngularM64, Int}}
-    indexToLevel::Vector{Int}
-    indexToM::Vector{AngularM64}
-    levelStart::Vector{Int}
+    levelIndices   ::Vector{Dict{AngularM64, Int}}
+    indexToLevel   ::Vector{Int}
+    indexToM       ::Vector{AngularM64}
+    levelStart     ::Vector{Int}
 end
 
 # ----------------------------------------------------------------------
-# Helper functions
+# Helpers
 # ----------------------------------------------------------------------
 function projections(J::AngularJ64)
     j = Float64(J.num) / Float64(J.den)
@@ -134,7 +126,7 @@ function levelLabel(sys::MResolvedMultiLevelSystem, level_i::Int)
 end
 
 # ----------------------------------------------------------------------
-# computeReducedDipole  (unchanged)
+# computeReducedDipole
 # ----------------------------------------------------------------------
 function computeReducedDipole(initial::Level, final::Level, omega::Float64,
                               grid::Radial.Grid, q::Int, stokes::ExpStokes)
@@ -179,7 +171,7 @@ function computeReducedDipole(initial::Level, final::Level, omega::Float64,
 end
 
 # ----------------------------------------------------------------------
-# computeMDipole  (unchanged)
+# computeMDipole
 # ----------------------------------------------------------------------
 function computeMDipole(initial::Level, final::Level, omega::Float64,
                         grid::Radial.Grid, q::Int, stokes::ExpStokes)
@@ -212,9 +204,7 @@ function computeMDipole(initial::Level, final::Level, omega::Float64,
 end
 
 # ----------------------------------------------------------------------
-# computeMIonizationRates   (CHANGED: now returns (gammaM, collectedLines))
-#   Physics loop is unchanged — per-M mValue, per-M sigma, per-M gamma.
-#   Only addition: collect the line list once (amplitudes are M-independent).
+# computeMIonizationRates   ← returns (gammaM, collectedLines)
 # ----------------------------------------------------------------------
 function computeMIonizationRates(excitedLevel::Level,
                                  finalMultiplet::Multiplet,
@@ -225,7 +215,9 @@ function computeMIonizationRates(excitedLevel::Level,
     nE = Int(2 * Je.num // Je.den + 1)
     gammaM = zeros(Float64, nE)
 
-    omega_ion = ionizingPulse.omega
+    omega_ion    = ionizingPulse.omega
+    omega_ion_eV = Defaults.convertUnits("energy: from atomic", omega_ion)
+
     stokes = piSettings.stokes
     Me_list = projections(Je)
 
@@ -236,18 +228,16 @@ function computeMIonizationRates(excitedLevel::Level,
         mVal = Float64(M)
         settingsM = PhotoIonization.Settings(
             piSettings;
-            photonEnergies = [omega_ion],
-            stokes = stokes
+            mValues          = (mVal, piSettings.mValues[2]),
+            photonEnergies   = [omega_ion_eV],
+            electronEnergies = Float64[],
+            stokes           = stokes
         )
 
         excitedMultiplet = Multiplet("excited", [excitedLevel])
 
         lines = PhotoIonization.computeLines(
-            finalMultiplet,
-            excitedMultiplet,
-            nm,
-            grid,
-            settingsM,
+            finalMultiplet, excitedMultiplet, nm, grid, settingsM,
             output=true
         )
 
@@ -267,7 +257,7 @@ function computeMIonizationRates(excitedLevel::Level,
             end
         end
 
-        intensity = ionizingPulse.A0^2 / (8 * pi * Defaults.getDefaults("alpha"))
+        intensity   = ionizingPulse.A0^2 / (8 * pi * Defaults.getDefaults("alpha"))
         photon_flux = intensity / omega_ion
         gammaM[idx] = total_sigma * photon_flux
     end
@@ -431,7 +421,7 @@ function computeMResolvedPAD(ρ_E::Matrix{ComplexF64},
                                     for (jM, Mb) in enumerate(Ms)
                                         M0b = Float64(Mb)
                                         ρ_ab = ρ_E[iM, jM]
-                                        abs(ρ_ab) < 1e-15 && continue
+                                        iszero(ρ_ab) && continue
                                         K = angularFunctionK_Mres(
                                             L1, L2, X,
                                             line.initialLevel.J, line.finalLevel.J,
@@ -617,7 +607,7 @@ function buildMResolvedMultiLevelSystem(scheme::MResolvedMultiLevelScheme,
                 electronEnergies = [p2.omega + levels[end].energy],
                 thetas     = collect(0:π/6:2π),
                 phis       = collect(0:π/6:2π),
-                mValue     = 0.5,
+                mValues    = (0.5, 0.0),
                 calcAnisotropy               = false,
                 calcPartialCs                = false,
                 calcTimeDelay                = false,
@@ -630,13 +620,10 @@ function buildMResolvedMultiLevelSystem(scheme::MResolvedMultiLevelScheme,
             )
         else
             println("  Using user-supplied PhotoIonization.Settings.")
-            PhotoIonization.Settings(
-                piSettings;
-                electronEnergies = [p2.omega + levels[end].energy],
-            )
+            piSettings
         end
 
-        # ← now correctly destructured (gammaIon::Vector, piLines::Vector{Line})
+        # ← TUPLE destructure — now correct, since the function returns a tuple
         gammaIon, piLines = computeMIonizationRates(levels[end], ionMultiplet,
                                                     comp.nuclearModel, comp.grid,
                                                     p2, piSettings_use)
@@ -699,7 +686,7 @@ function buildMResolvedMultiLevelSystem(scheme::MResolvedMultiLevelScheme,
 end
 
 # ----------------------------------------------------------------------
-# multiLevelRabi  (unchanged)
+# multiLevelRabi
 # ----------------------------------------------------------------------
 function multiLevelRabi(t::Float64, sys::MResolvedMultiLevelSystem,
                         transition_idx::Int)
@@ -730,7 +717,7 @@ function multiLevelRabi(t::Float64, sys::MResolvedMultiLevelSystem,
 end
 
 # ----------------------------------------------------------------------
-# buildMResolvedMultiLevelHamiltonian  (unchanged)
+# buildMResolvedMultiLevelHamiltonian
 # ----------------------------------------------------------------------
 function buildMResolvedMultiLevelHamiltonian(t::Float64,
                                              sys::MResolvedMultiLevelSystem)
@@ -774,7 +761,7 @@ function buildMResolvedMultiLevelHamiltonian(t::Float64,
 end
 
 # ----------------------------------------------------------------------
-# mResolvedMultiLevelDerivative  (unchanged)
+# mResolvedMultiLevelDerivative
 # ----------------------------------------------------------------------
 function mResolvedMultiLevelDerivative(ρ::Matrix{ComplexF64}, t::Float64,
                                        sys::MResolvedMultiLevelSystem)
@@ -815,7 +802,7 @@ function mResolvedMultiLevelDerivative(ρ::Matrix{ComplexF64}, t::Float64,
 end
 
 # ----------------------------------------------------------------------
-# extractMResolvedMultiLevelPopulations  (unchanged)
+# extractMResolvedMultiLevelPopulations
 # ----------------------------------------------------------------------
 function extractMResolvedMultiLevelPopulations(ρ::Matrix{ComplexF64},
                                                 sys::MResolvedMultiLevelSystem)
@@ -865,7 +852,7 @@ function extractMResolvedMultiLevelPopulations(ρ::Matrix{ComplexF64},
 end
 
 # ----------------------------------------------------------------------
-# printMResolvedMultiLevelState  (unchanged)
+# printMResolvedMultiLevelState
 # ----------------------------------------------------------------------
 function printMResolvedMultiLevelState(ρ::Matrix{ComplexF64},
                                        sys::MResolvedMultiLevelSystem,
